@@ -1,0 +1,21 @@
+[package]
+name = "rv-app"
+description = "Dashcam video and GPS track viewer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rvplayer"
+path = "src/main.rs"
+
+[dependencies]
+rv-core.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
+egui_plot.workspace = true
+walkers.workspace = true
+rfd.workspace = true

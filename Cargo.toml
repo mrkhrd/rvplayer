@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/rv-core", "crates/rv-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+rv-core = { path = "crates/rv-core" }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+eframe = "0.37"
+egui = "0.37"
+egui_extras = "0.37"
+egui_plot = "0.38"
+walkers = "0.64"
+rfd = "0.17"
+
+[profile.dev.package."*"]
+opt-level = 2
