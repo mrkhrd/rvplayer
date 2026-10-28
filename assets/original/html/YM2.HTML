@@ -1,0 +1,317 @@
+<HTML xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Registrator Viewer - Yandex Maps Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <script src="http://api-maps.yandex.ru/2.0/?load=package.full&lang=ru-RU" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+var map;
+var marker;
+var markerD;
+var mylines = [];
+var markersAB = [];
+var inited = 0;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.getBounds();
+  bl = b[0];
+  tr = b[1];
+  div = document.getElementById("map_canvas");
+  c = map.getCenter();
+  MyCallback(cmd + 
+    '?t=' + tr[0] + '&l=' + bl[1] + '&b=' + bl[0] + '&r=' + tr[1] + 
+    '&w=' + div.offsetWidth + '&h=' + div.offsetHeight +
+    '&x=' + c[1] + '&y=' + c[0] +
+    '&z=' + map.getZoom() +
+    '&mt=' + map.getType()
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(e)
+{
+  c = e.get("coordPosition");
+  MyCallback('routeClick?x=' + c[1] + '&y=' + c[0]);
+}
+
+function initialize(centerPosY, centerPosX, zoomVal, mapType)
+{
+  if (typeof(ymaps) == "undefined") {
+    return;
+  }
+
+  if ((mapType.length == 0) || (ymaps.mapType.storage.get(mapType) == null))
+    mapType = 'yandex#publicMap'; // 'yandex#map';
+
+  document.getElementById("map_canvas").innerHTML = '';
+  map = new ymaps.Map("map_canvas", {
+      center: [centerPosY, centerPosX],
+      zoom: zoomVal,
+      type: mapType
+    }, {
+      maxAnimationZoomDifference: 20
+    }
+  );
+
+  map.controls
+    .add("mapTools")
+    .add("zoomControl")
+    .add("typeSelector")
+    .add("scaleLine");
+
+  map.events.add("boundschange", OnFinishChanges);
+  map.events.add("typechange", OnBoundsChanged);
+
+  inited = 1;
+  MyCallback('inited');
+  OnFinishChanges();
+}
+
+function IntToHex(n)
+{
+  var result = n.toString(16);
+  if (result.length == 1) {
+    result = "0" + result;
+  }
+  return result;
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+  try {
+    line = new ymaps.Polyline(pathA, {}, {
+      hasBalloon: false,
+      hasHint: false,
+      fill: false,
+      strokeWidth: 5,
+      strokeColor2: color.substr(1) + IntToHex(Math.round(opacityVal*255)),
+      strokeColor: color.substr(1),
+      strokeOpacity: opacityVal,
+      zIndex: 92
+    });
+    line.events.add("click", OnRouteClick);
+    mylines.push(line);
+    map.geoObjects.add(line);
+  } catch (e) { }
+}
+
+function AddPathMarker(img, pos)
+{
+  mylines.push(AddImgMarker(img, pos, 1));
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  for (i in mylines) {
+    map.geoObjects.remove(mylines[i]);
+  }
+  mylines.length = 0;
+}
+
+function AddImgMarker(img, pos, zInd)
+{
+  if (inited == 0)
+    return null;
+  try {
+    m = new ymaps.Placemark(pos, { }, {
+      hasBalloon: false,
+      hasHint: false,
+      iconImageHref: img,
+      iconImageSize: [20, 34],
+      iconImageOffset: [-10, -34],
+      zIndex: 90 + zInd
+    });
+    m.events.add("click", OnRouteClick);
+    map.geoObjects.add(m);
+    return m;
+  } catch (e) { return null; }
+}
+
+function AddABMarker(img, pos)
+{
+  markersAB.push(AddImgMarker(img, pos, 2));
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  if (markersAB.length == 0) {
+    AddABMarker(imgA, posA);
+    AddABMarker(imgB, posB);
+  } else {
+    markersAB[0].geometry.setCoordinates(posA);
+    markersAB[1].geometry.setCoordinates(posB);
+  }
+}
+
+function ClearMarkersAB()
+{
+  for (i in markersAB) {
+    map.geoObjects.remove(markersAB[i]);
+  }
+  markersAB.length = 0;					
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    marker.geometry.setCoordinates([border]);
+  } else {
+    marker = new ymaps.Polygon([border], {}, {
+      cursor: "default",
+      hasBalloon: false,
+      hasHint: false,
+      strokeWidth: 2,
+      strokeColor: "000000FF",
+      fillColor: "00FF00FF",
+      zIndex: 95
+    });
+    map.geoObjects.add(marker);
+  }
+  if (markerD) {
+    ClearMarkerD();
+  }
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    map.geoObjects.remove(marker);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    ClearMarker();
+  }
+  if(markerD) {
+    markerD.geometry.setCoordinates(c);
+  } else {
+    markerD = new ymaps.Circle([c, r], {}, {
+      cursor: "default",
+      hasBalloon: false,
+      hasHint: false,
+      stroke: false,
+      strokeWidth: 0,
+      fillColor: "00FF0080",
+      zIndex: 91
+    });
+    map.geoObjects.add(markerD);
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    map.geoObjects.remove(markerD);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  ClearMarker();
+  ClearMarkerD();
+}
+
+function PanTo(pos)
+{
+  map.panTo(pos);
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.setBounds([sw, ne]);
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  if (cetnerPos != null) {
+    map.setCenter(cetnerPos, zoom, {duration: 500});
+  } else {
+    map.setZoom(zoom, {duration: 500});
+  }
+}
+
+function OnResize()
+{
+  div = document.getElementById("map_canvas");
+  div.style.height = document.body.clientHeight + 'px';
+  div.style.width = document.body.clientWidth + 'px';
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onresize="OnResize()"
+>
+  <div id="map_canvas" style="width: 300px; height: 300px">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Yandex Maps 2...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+    OnResize();
+
+    if (typeof(ymaps) != "undefined") {
+      document.getElementById("map_canvas").innerHTML = '<center>Loading Yandex Maps...</center>';
+      ymaps.ready(function() { MyCallback('loaded', true); });
+    }
+  </script>
+
+</body>
+
+</HTML>

@@ -48,6 +48,8 @@ pub fn show(app: &mut RvApp, ui: &mut Ui) {
         "Resolution",
     ];
     let mut clicked = None;
+    // Selectable cell text would take the click for text selection instead of selecting the row.
+    ui.style_mut().interaction.selectable_labels = false;
     TableBuilder::new(ui)
         .striped(true)
         .resizable(true)

@@ -1,0 +1,19 @@
+[package]
+name = "rv-ffi"
+description = "C interface to rv-core and rv-video for the Qt application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+rv-core.workspace = true
+rv-video.workspace = true
+rv-fm.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+rv-core = { workspace = true, features = ["testutil"] }

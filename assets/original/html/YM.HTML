@@ -1,0 +1,324 @@
+<HTML xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Registrator Viewer - Yandex Maps Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <script src="http://api-maps.yandex.ru/1.1/index.xml?key=ANpUFEkBAAAAf7jmJwMAHGZHrcKNDsbEqEVjEUtCmufxQMwAAAAAAAAAAAAvVrubVT4btztbduoIgTLAeFILaQ==" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+var map;
+var marker;
+var markerD;
+var mylines = [];
+var markersAB = [];
+var inited = 0;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.getBounds();
+  ne = b.getRightTop();
+  sw = b.getLeftBottom();
+  div = map.getContainer();
+  c = map.getCenter();
+  MyCallback(cmd + 
+    '?t=' + ne.getLat() + '&l=' + sw.getLng() + '&b=' + sw.getLat() + '&r=' + ne.getLng() + 
+    '&w=' + div.offsetWidth + '&h=' + div.offsetHeight +
+    '&x=' + c.getX() + '&y=' + c.getY() +
+    '&z=' + map.getZoom() +
+    '&mt=' + map.getType().getName()
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(map, mEvent)
+{
+  MyCallback('routeClick?x=' + mEvent.getGeoPoint().getLng() + '&y=' + mEvent.getGeoPoint().getLat());
+}
+
+function initialize(cetnerPosY, cetnerPosX, zoomVal, mapType)
+{
+  if (typeof(YMaps) == "undefined") {
+    return;
+  }
+
+  if (YMaps.MapType.SATELLITE.getName() == mapType) {
+    mt = YMaps.MapType.SATELLITE;
+  } else if (YMaps.MapType.HYBRID.getName() == mapType) {
+    mt = YMaps.MapType.HYBRID;
+  } else {
+    mt = YMaps.MapType.MAP;
+  }
+
+  map = new YMaps.Map(document.getElementById("map_canvas"));
+
+  map.addControl(new YMaps.TypeControl());
+  map.addControl(new YMaps.ToolBar());
+  map.addControl(new YMaps.Zoom());
+  //map.addControl(new YMaps.MiniMap());
+  map.addControl(new YMaps.ScaleLine());
+
+  s = new YMaps.Style();
+  s.hasBalloon = false;
+  s.hasHint = false;
+  s.polygonStyle = new YMaps.PolygonStyle();
+  s.polygonStyle.fill = true;
+  s.polygonStyle.outline = true;
+  s.polygonStyle.strokeWidth = 2;
+  s.polygonStyle.strokeColor = "000000FF";
+  s.polygonStyle.fillColor = "00FF00FF";
+  YMaps.Styles.add("Marker", s);
+
+  s = new YMaps.Style();
+  s.hasBalloon = false;
+  s.hasHint = false;
+  s.polygonStyle = new YMaps.PolygonStyle();
+  s.polygonStyle.fill = true;
+  s.polygonStyle.outline = false;
+  s.polygonStyle.fillColor = "00FF0080";
+  YMaps.Styles.add("MarkerD", s);
+
+  YMaps.Events.observe(map, map.Events.Update, OnBoundsChanged);
+  YMaps.Events.observe(map, map.Events.BoundsChange, OnFinishChanges);
+
+  map.setCenter(new YMaps.GeoPoint(cetnerPosX, cetnerPosY), zoomVal, mt);
+
+  inited = 1;
+  MyCallback('inited');
+  OnFinishChanges();
+}
+
+function IntToHex(n)
+{
+  var result = n.toString(16);
+  if (result.length == 1) {
+    result = "0" + result;
+  }
+  return result;
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+  try {
+    s = new YMaps.Style();
+    s.hasBalloon = false;
+    s.hasHint = false;
+    s.lineStyle = new YMaps.LineStyle();
+    s.lineStyle.strokeColor = color.substr(1) + IntToHex(Math.round(opacityVal*255));
+    s.lineStyle.strokeWidth = '6';
+
+    line = new YMaps.Polyline(pathA, {style: s, zIndex: 92});
+    YMaps.Events.observe(line, line.Events.Click, OnRouteClick);
+    map.addOverlay(line);
+    mylines.push(line);
+  } catch (e) { }
+}
+
+function AddPathMarker(img, pos)
+{
+  mylines.push(AddImgMarker(img, pos, 1));
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  for (i in mylines) {
+    map.removeOverlay(mylines[i]);
+  }
+  mylines.length = 0;
+}
+
+function AddImgMarker(img, pos, zInd)
+{
+  if (inited == 0)
+    return -1;
+  var s = new YMaps.Style();
+  s.iconStyle = new YMaps.IconStyle();
+  s.hasBalloon = false;
+  s.hasHint = false;
+  s.iconStyle.href = img;
+  s.iconStyle.size = new YMaps.Point(20, 34);
+  s.iconStyle.offset = new YMaps.Point(-10, -34);
+  m = new YMaps.Placemark(pos, {style: s, zIndex: 90 + zInd});
+  YMaps.Events.observe(m, m.Events.Click, OnRouteClick);
+  map.addOverlay(m);
+  return m;
+}
+
+function AddABMarker(img, pos)
+{
+  markersAB.push(AddImgMarker(img, pos, 2));
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  if (markersAB.length == 0) {
+    AddABMarker(imgA, posA);
+    AddABMarker(imgB, posB);
+  } else {
+    markersAB[0].setGeoPoint(posA);
+    markersAB[1].setGeoPoint(posB);
+  }
+}
+
+function ClearMarkersAB()
+{
+  for (i in markersAB) {
+    map.removeOverlay(markersAB[i]);
+  }
+  markersAB.length = 0;					
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    marker.setPoints(border);
+  } else {
+    marker = new YMaps.Polygon(border, {zIndex: 95});
+    marker.setStyle("Marker");
+    map.addOverlay(marker);
+  }
+  if (markerD) {
+    ClearMarkerD();
+  }
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    map.removeOverlay(marker);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    ClearMarker();
+  }
+  cy = r/1000 / 112.2;
+  northPoint = new YMaps.GeoPoint(c.getLng(), c.getLat() + cy);
+  pixCenter = map.coordSystem.fromCoordPoint(c);
+  pixRadius = pixCenter.getY() - map.coordSystem.fromCoordPoint(northPoint).getY();
+  eastPoint = map.coordSystem.toCoordPoint(new YMaps.Point(pixCenter.getX() + pixRadius, pixCenter.getY()));
+  cx = eastPoint.getLng() - c.getLng();
+  border = [
+    new YMaps.GeoPoint(c.getLng() - cx, c.getLat()),
+    new YMaps.GeoPoint(c.getLng() - 0.7*cx, c.getLat() - 0.7*cy),
+    new YMaps.GeoPoint(c.getLng(), c.getLat() - cy),
+    new YMaps.GeoPoint(c.getLng() + 0.7*cx, c.getLat() - 0.7*cy),
+    new YMaps.GeoPoint(c.getLng() + cx, c.getLat()),
+    new YMaps.GeoPoint(c.getLng() + 0.7*cx, c.getLat() + 0.7*cy),
+    new YMaps.GeoPoint(c.getLng(), c.getLat() + cy),
+    new YMaps.GeoPoint(c.getLng() - 0.7*cx, c.getLat() + 0.7*cy),
+  ];
+  if(markerD) {
+    markerD.setPoints(border);
+  } else {
+    markerD = new YMaps.Polygon(border, {zIndex: 91});
+    markerD.setStyle("MarkerD");
+    map.addOverlay(markerD);
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    map.removeOverlay(markerD);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  ClearMarker();
+  ClearMarkerD();
+}
+
+function PanTo(pos)
+{
+  map.setCenter(pos);
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.setBounds(new YMaps.GeoBounds(sw, ne));
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  map.setZoom(zoom, {smooth:true, position: anchorPos});
+}
+
+function OnResize()
+{
+  div = document.getElementById("map_canvas");
+  div.style.height = document.body.clientHeight + 'px';
+  div.style.width = document.body.clientWidth + 'px';
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onload="MyCallback('loaded', true)"
+  onresize="OnResize()"
+>
+  <div id="map_canvas" style="width: 300px; height: 300px">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Yandex Maps...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+    OnResize();
+  </script>
+</body>
+
+</HTML>

@@ -28,7 +28,8 @@ pub fn show(app: &mut RvApp, ui: &mut Ui) {
         {
             app.view.time_zoom = (app.view.time_zoom + 1).min(MAX_TIME_ZOOM);
         }
-        ui.add(egui::Slider::new(&mut app.view.time_zoom, 1..=MAX_TIME_ZOOM).show_value(false));
+        ui.add(egui::Slider::new(&mut app.view.time_zoom, 1..=MAX_TIME_ZOOM).show_value(false))
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, "Time zoom"));
         ui.label(format!(
             "{} / {}",
             format_duration(app.playback.position),

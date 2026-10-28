@@ -1,0 +1,289 @@
+<HTML xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Registrator Viewer - Baidu Maps Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <script type="text/javascript" src="http://api.map.baidu.com/api?v=1.3"></script>
+
+<script type="text/javascript">
+
+var map;
+var marker;
+var markerD;
+var mylines = [];
+var markersAB = [];
+var inited = 0;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.getBounds();
+  ne = b.getNorthEast();
+  sw = b.getSouthWest();
+  div = map.getContainer();
+  c = map.getCenter();
+  var type = "Road";
+  if (map.getMapType() == BMAP_PERSPECTIVE_MAP) {
+    type = "3D";
+  } else if (map.getMapType() == BMAP_SATELLITE_MAP) {
+    type = "Sat";
+  } else if (map.getMapType() == BMAP_HYBRID_MAP) {
+    type = "Hybrid";
+  }
+  MyCallback(cmd + 
+    '?t=' + ne.lat + '&l=' + sw.lng + '&b=' + sw.lat + '&r=' + ne.lng + 
+    '&w=' + div.offsetWidth + '&h=' + div.offsetHeight +
+    '&x=' + c.lng + '&y=' + c.lat +
+    '&z=' + map.getZoom() +
+    '&mt=' + type
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(event)
+{
+  MyCallback('routeClick?x=' + event.point.lng + '&y=' + event.point.lat);
+}
+
+function initialize(cetnerPosY, cetnerPosX, zoomVal, mapType)
+{
+  if (typeof(BMap) == "undefined") {
+    return;
+  }
+
+  var type = BMAP_NORMAL_MAP;
+  if (mapType == "3D") {
+    type = BMAP_PERSPECTIVE_MAP;
+  } else if (mapType == "Sat") {
+    type = BMAP_SATELLITE_MAP;
+  } else if (mapType == "Hybrid") {
+    type = BMAP_HYBRID_MAP;
+  }
+
+  map = new BMap.Map("map_canvas", {mapType: type});
+  map.centerAndZoom(new BMap.Point(cetnerPosX, cetnerPosY), zoomVal);
+
+  map.addControl(new BMap.NavigationControl());
+  map.addControl(new BMap.ScaleControl());
+  map.addControl(new BMap.OverviewMapControl());
+  map.addControl(new BMap.MapTypeControl({mapTypes: [BMAP_NORMAL_MAP, BMAP_SATELLITE_MAP, BMAP_HYBRID_MAP]}));
+
+  map.addEventListener('moveend', OnFinishChanges);
+  map.addEventListener('zoomend', OnFinishChanges);
+  map.addEventListener('maptypechange', OnFinishChanges);
+  map.addEventListener('moving', OnBoundsChanged);
+
+  inited = 1;
+  MyCallback('inited');
+  OnFinishChanges();
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+  line = new BMap.Polyline(pathA, {
+    strokeColor: color,
+    strokeOpacity: opacityVal,
+    strokeWeight: 6.0,
+    zIndex: 2
+  });
+  mylines.push(line);
+  map.addOverlay(line);
+  line.addEventListener('click', OnRouteClick);
+}
+
+function AddPathMarker(img, pos)
+{
+  mylines.push(AddImgMarker(img, pos, 1));
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  for (i in mylines) {
+    map.removeOverlay(mylines[i]);
+  }
+  mylines.length = 0;					
+}
+
+function AddImgMarker(img, pos, zInd)
+{
+  if (inited == 0)
+    return -1;
+  m = new BMap.Marker(pos, {
+    icon: new BMap.Icon(img, 
+      new BMap.Size(20, 34),
+      { 
+        anchor: new BMap.Size(20/2, 34)
+      })
+  })
+  map.addOverlay(m);
+  return m;
+}
+
+function AddABMarker(img, pos)
+{
+  markersAB.push(AddImgMarker(img, pos, 2));
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  if (markersAB.length == 0) {
+    AddABMarker(imgA, posA);
+    AddABMarker(imgB, posB);
+  } else {
+    markersAB[0].setPosition(posA);
+    markersAB[1].setPosition(posB);
+  }
+}
+
+function ClearMarkersAB()
+{
+  for (i in markersAB) {
+    map.removeOverlay(markersAB[i]);
+  }
+  markersAB.length = 0;					
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  if(marker) {
+    marker.setPath(border);
+  } else {
+    marker = new BMap.Polygon(border, {
+      fillColor: "#00FF00",
+      fillOpacity: 1.00,
+      strokeColor: "#000000",
+      strokeOpacity: 1.00,
+      strokeWeight: 2.0,
+      enableClicking: false,
+      zIndex: 4
+    });
+    map.addOverlay(marker);
+  }
+  if (markerD) {
+    ClearMarkerD();
+  }
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    map.removeOverlay(marker);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    ClearMarker();
+  }
+  if(markerD) {
+    markerD.setCenter(c);
+    markerD.setRadius(r);
+  } else {
+    markerD = new BMap.Circle(c, r, {
+      fillColor: "#00FF00",
+      fillOpacity: 0.5,
+      strokeWeight: 0,
+      strokeOpacity: 0,
+      enableClicking: false,
+      zIndex: 4
+    });
+    map.addOverlay(markerD);
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    map.removeOverlay(markerD);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  ClearMarker();
+  ClearMarkerD();
+}
+
+function PanTo(pos)
+{
+  map.panTo(pos);
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.setViewport(new BMap.Bounds(sw, ne));
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  if (cetnerPos != null)
+    map.setCenter(cetnerPos);
+  map.setZoom(zoom);
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onload="MyCallback('loaded', true)"
+>
+  <div id="map_canvas" style="width: 100%; height: 100%">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Baidu Maps...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+  </script>
+</body>
+
+</HTML>

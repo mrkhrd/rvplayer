@@ -1,0 +1,4 @@
+﻿MyEMail                 "help@datakam.com"
+MySiteBrand             "http://datakam.com"
+MyCity                  "DATAKAM technology Co.Ltd., Taiwan"
+MyName                  "+86 (755) 2227-1965"

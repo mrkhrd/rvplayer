@@ -1,0 +1,2 @@
+﻿MyEMail                 "vadikus@mail.ru"
+MySite                  "http://www.registratorviewer.com/index_en.html"
