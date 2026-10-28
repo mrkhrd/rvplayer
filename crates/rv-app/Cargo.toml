@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 rv-core.workspace = true
+rv-video.workspace = true
 chrono.workspace = true
 eframe.workspace = true
 egui.workspace = true

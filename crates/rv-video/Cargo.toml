@@ -1,0 +1,13 @@
+[package]
+name = "rv-video"
+description = "Video decoding: MP4/MOV samples to RGBA frames via pure-Rust H.264/H.265 decoders"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rv-core.workspace = true
+rayon.workspace = true
+filmcraft-h264.workspace = true
+filmcraft-hevc.workspace = true
