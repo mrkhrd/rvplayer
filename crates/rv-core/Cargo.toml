@@ -1,0 +1,10 @@
+[package]
+name = "rv-core"
+description = "Dashcam file model: MP4/MOV structure, GPS/G-sensor tracks, file info"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
