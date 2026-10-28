@@ -4,11 +4,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod app;
-mod i18n;
-mod ui;
-
 use std::path::PathBuf;
+
+use rv_app::RvApp;
 
 fn main() -> eframe::Result {
     let folder = std::env::args_os().nth(1).map(PathBuf::from);
@@ -22,6 +20,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "RV Player",
         options,
-        Box::new(|cc| Ok(Box::new(app::RvApp::new(cc, folder)))),
+        Box::new(|cc| Ok(Box::new(RvApp::new(cc, folder)))),
     )
 }

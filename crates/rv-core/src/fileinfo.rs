@@ -32,6 +32,12 @@ impl FileInfo {
     /// Reads the container structure and any supported GPS track. Never fails: problems are
     /// reported in `error` so the file still appears in the list.
     pub fn load(path: &Path) -> FileInfo {
+        Self::load_with_movie(path).0
+    }
+
+    /// Like [`FileInfo::load`], also returning the container structure (tracks and sample
+    /// tables) when it could be read, for callers that need more than the summary.
+    pub fn load_with_movie(path: &Path) -> (FileInfo, Option<Movie>) {
         let mut info = FileInfo {
             path: path.to_path_buf(),
             name: path
@@ -40,13 +46,16 @@ impl FileInfo {
                 .unwrap_or_default(),
             ..Default::default()
         };
-        if let Err(e) = info.read(path) {
-            info.error = Some(e.to_string());
+        match info.read(path) {
+            Ok(movie) => (info, Some(movie)),
+            Err(e) => {
+                info.error = Some(e.to_string());
+                (info, None)
+            }
         }
-        info
     }
 
-    fn read(&mut self, path: &Path) -> io::Result<()> {
+    fn read(&mut self, path: &Path) -> io::Result<Movie> {
         let file = File::open(path)?;
         self.size = file.metadata()?.len();
         let mut r = BufReader::new(file);
@@ -61,7 +70,7 @@ impl FileInfo {
             self.track = track;
         }
         self.start = self.track.start.or_else(|| creation_time(&movie));
-        Ok(())
+        Ok(movie)
     }
 
     pub fn distance_km(&self) -> f64 {

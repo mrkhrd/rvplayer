@@ -4,6 +4,7 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
 use crate::app::RvApp;
+use crate::ui::icons::{self, Icon};
 use crate::ui::{clock_at, format_duration, map_view::draw_heading_arrow};
 
 const KM_PER_MILE: f64 = 1.609_344;
@@ -14,19 +15,15 @@ pub fn show(app: &mut RvApp, ui: &mut Ui) {
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         let s = &app.strings;
-        let play_label = if app.playback.playing { "⏸" } else { "▶" };
-        let play = ui
-            .button(play_label)
-            .on_hover_text(s.t("N_Playback_Play"))
-            .clicked();
-        let stop = ui
-            .button("⏹")
-            .on_hover_text(s.t("N_Playback_Stop"))
-            .clicked();
-        ui.add_enabled(false, egui::Button::new("⏮"))
-            .on_disabled_hover_text(s.t("N_Playback_Frame_Prev"));
-        ui.add_enabled(false, egui::Button::new("⏭"))
-            .on_disabled_hover_text(s.t("N_Playback_Frame_Next"));
+        let play_icon = if app.playback.playing {
+            Icon::Pause
+        } else {
+            Icon::Play
+        };
+        let play = icons::button(ui, play_icon, s.t("N_Playback_Play"), true).clicked();
+        let stop = icons::button(ui, Icon::Stop, s.t("N_Playback_Stop"), true).clicked();
+        icons::button(ui, Icon::FramePrev, s.t("N_Playback_Frame_Prev"), false);
+        icons::button(ui, Icon::FrameNext, s.t("N_Playback_Frame_Next"), false);
         egui::ComboBox::from_id_salt("PanelPlaySpeed")
             .width(60.0)
             .selected_text(format!("×{}", app.playback.rate))
@@ -34,9 +31,12 @@ pub fn show(app: &mut RvApp, ui: &mut Ui) {
                 for r in PLAY_RATES {
                     ui.selectable_value(&mut app.playback.rate, r, format!("×{r}"));
                 }
-            });
+            })
+            .response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Play speed"));
         ui.add(egui::Slider::new(&mut app.playback.volume, 0.0..=1.0).show_value(false))
-            .on_hover_text("🔊");
+            .on_hover_text("🔊")
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, "Volume"));
         ui.checkbox(&mut app.playback.loop_ab, s.t("N_View_Time_LoopAB"));
         if play {
             app.toggle_play();

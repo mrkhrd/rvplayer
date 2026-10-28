@@ -1,0 +1,360 @@
+<HTML xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Registrator Viewer - Leaflet Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <style>
+    .leaflet-tile { cursor: url(openhand.cur), default !important; }
+  </style>
+
+<!--
+  <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7/leaflet.css" />
+  <script src="http://cdn.leafletjs.com/leaflet-0.7/leaflet.js"></script>
+-->
+  <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.3/leaflet.css" />
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.3/leaflet.js"></script>
+
+  <script src="osm2_maps.js"></script>
+  <script src="osm2_kml.js"></script>
+
+  <link rel="stylesheet" href="osm2_distance.css" />
+  <script src="osm2_distance.js"></script>
+  <link rel="stylesheet" href="http://leaflet.github.io/Leaflet.draw/leaflet.draw.css" />
+  <script src="http://leaflet.github.io/Leaflet.draw/leaflet.draw.js"></script>
+
+<script type="text/javascript">
+
+var map;
+var baseLayerName;
+var pathLayer;
+var pathMarkersLayer;
+var markerLayer;
+var marker;
+var markerD;
+var markersABLayer;
+var inited = 0;
+var myKMLLayer;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.getBounds();
+  c = b.getCenter();
+  size = map.getSize();
+  sw = b.getSouthWest();
+  ne = b.getNorthEast();
+  MyCallback(cmd + 
+    '?t=' + ne.lat + '&l=' + sw.lng + '&b=' + sw.lat + '&r=' + ne.lng + 
+    '&w=' + size.x + '&h=' + size.y +
+    '&x=' + c.lng + '&y=' + c.lat +
+    '&z=' + map.getZoom() +
+    '&mt=' + baseLayerName
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(e)
+{
+  lonlat = e.latlng;
+  MyCallback('routeClick?x=' + lonlat.lng + '&y=' + lonlat.lat);
+}
+
+function OnBaseLayerChange(e)
+{
+  baseLayerName = e.name;
+  OnBoundsChanged();
+}
+
+function initialize(cetnerPosY, cetnerPosX, zoomVal, mapType)
+{
+  if (typeof(L) == "undefined") {
+    return;
+  }
+
+  document.getElementById("map_canvas").innerHTML = '';
+  map = L.map('map_canvas', {
+    center: new L.LatLng(cetnerPosY, cetnerPosX),
+    zoom: zoomVal
+  });
+
+  L.control.scale().addTo(map);
+
+  map.addControl(new L.Control.Distance());
+
+  layers = {
+    "Open Steet Map": L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: 'OSM'}),
+    "Open Cycle Map": L.tileLayer('http://{s}.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png', {attribution: 'OSM'}),
+    "Open Transport Map": L.tileLayer("http://{s}.tile2.opencyclemap.org/transport/{z}/{x}/{y}.png", {attribution: 'OSM'}),
+    "Open Landscape Map": L.tileLayer("http://{s}.tile3.opencyclemap.org/landscape/{z}/{x}/{y}.png", {attribution: 'OSM'}),
+    "Open Outdoors Map": L.tileLayer("http://{s}.tile.thunderforest.com/outdoors/{z}/{x}/{y}.png", {attribution: 'OSM'}),
+    "Open Surfer Map": L.tileLayer("http://129.206.74.245:8001/tms_r.ashx?x={x}&y={y}&z={z}", {attribution: 'OSM'}),
+    //"Open F4 Map": L.tileLayer("http://tiles{s}.map.f4-group.com/tiles/osm-white/{z}/{x}/{y}.png", {subdomains: "0123", attribution: 'OSM F4'}),
+    "MapQuest OSM": L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.png", {subdomains: "1234", attribution: 'MapQuest'}),
+    "MapQuest Aerial": L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/sat/{z}/{x}/{y}.png", {subdomains: "1234", attribution: 'MapQuest'}),
+
+    "2GIS": L.tileLayer("http://tile1.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.1", {attribution: '2GIS'}),
+
+    "Nokia Ovi(Here) Road": L.tileLayer("http://{s}.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/normal.day/{z}/{x}/{y}/256/png8?token=&app_id=", {subdomains: '1234', attribution: 'OVI'}),
+    "Nokia Ovi(Here) Satellite": L.tileLayer("http://{s}.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/satellite.day/{z}/{x}/{y}/256/png8?token=&app_id=", {subdomains: '1234', attribution: 'OVI'}),
+    "Nokia Ovi(Here) Hybrid": L.tileLayer("http://{s}.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/hybrid.day/{z}/{x}/{y}/256/png8?token=&app_id=", {subdomains: '1234', attribution: 'OVI'}),
+
+    "Bing Road": new L.BingLayer("Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG", {type: "Road"}),
+    "Bing Satellite": new L.BingLayer("Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG", {type: "Aerial"}),
+    "Bing Hybrid": new L.BingLayer("Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG", {type: "AerialWithLabels"}),
+
+    "Rus - Росреестр": new L.TileLayer.WMS('http://maps.rosreestr.ru/arcgis/rest/services/Cadastre/Cadastre/MapServer/export', {layers: '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20', transparent: 'true', /*crs: 'EPSG:3857',*/ version: '1.3.0', opacity: 0.7, f: 'image', attribution: "Росреестр"}),
+    "Rus - Геоцентр": L.tileLayer("http://gis01.rumap.ru/ArcGIS/rest/services/rumap0213/MapServer/tile/{z}/{y}/{x}", {attribution: 'Геоцентр'}),
+    "Rus - Навител": new L.NavitelLayer("Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG", {type: "Road"}),
+    //"Rus - Genshtab 250m": new L.gmtLayer("",{usermap: "genshtab250m","host":"91.237.82.95:8092"}),
+    "Rus - Генштаб 250м": L.tileLayer('http://91.237.82.95:8092/genshtab250m/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 250'}),
+    "Rus - Генштаб 500м": L.tileLayer('http://91.237.82.95:8092/genshtab500m/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 500'}),
+    "Rus - Генштаб 1км": L.tileLayer('http://91.237.82.95:8092/genshtab1km/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 1km'}),
+    "Rus - Генштаб 2км": L.tileLayer('http://91.237.82.95:8092/genshtab2km/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 2km'}),
+    "Rus - Генштаб 5км": L.tileLayer('http://91.237.82.95:8092/genshtab5km/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 5km'}),
+    "Rus - Генштаб 10км": L.tileLayer('http://91.237.82.95:8092/genshtab10km/{z}/{x}/{y}.jpg', {attribution: 'Генштаб 10km'}),
+
+    "ArcGIS - Esri": L.tileLayer("http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {attribution: 'ArcGIS'}),
+    "Stamen": L.tileLayer("http://{s}.tile.stamen.com/toner/{z}/{x}/{y}.png", {attribution: 'toner'}),
+    "Yahoo Road": new L.YahooLayer({type: "Road"}),
+    "Yahoo Satellite": new L.YahooLayer({type: "Sat"})
+
+    //"Rus - Mail.ru": L.tileLayer("http://t{s}maps.mail.ru/tiles/scheme/{z}/{y}/{x}.png", {subdomains: "12", attribution: '@mail.ru', maxZoom: 17}),
+    //"Rus - Космоснимки": L.tileLayer("http://maps.kosmosnimki.ru/TileSender.ashx?ModeKey=tile&MapName=1D30C72D02914C5FB90D1D448159CAB6&LayerName=C9458F2DCB754CEEACC54216C7D1EB0A&key=Ziu6TPYb5bPGbzlMGJvEZW9aC%2BYgOPqEXyTtc%2FFzrigkewPGSWWdyNRVV3hxbKpr4IVhi79G2ZazSq7Rtf58YLegYD1FfefmRXPtdr4sm3a%2BZWIqyqm9JWFrQcHpyy3e8xIvE7JTVWcIT7wObsj8FG3HN%2BzPuTp2JekFOVp0TGcY9%2BKRVq71WKMxYeG8W3AX&z={z}&x={y}&y={x}"),
+    //"Rus - Космоснимки": L.tileLayer("http://irs.gis-lab.info/?layers=irs&request=GetTile&z={z}&x={x}&y={y}", {attribution: 'kosmosnimki'}),
+    //"Rus - Космоснимки": L.tileLayer("http://{s}.tile.osm.kosmosnimki.ru/kosmo/{z}/{x}/{y}.png", {attribution: 'Космоснимки'}),
+  };
+  uplayers = {
+  };
+  baseLayer = layers[mapType];
+  if (!baseLayer) {
+    mapType = "Open Steet Map"
+    baseLayer = layers[mapType];
+  }
+  baseLayerName = mapType;
+  L.control.layers(layers, uplayers, {autoZIndex: false}).addTo(map);
+  baseLayer.addTo(map);
+
+  pathLayer = L.layerGroup().addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+  pathMarkersLayer = L.layerGroup().addTo(map);
+  markersABLayer = L.layerGroup().addTo(map);
+
+  map.on('move', OnBoundsChanged);
+  map.on('moveend', OnFinishChanges);
+  map.on('baselayerchange', OnBaseLayerChange);
+
+  inited = 1;
+  MyCallback('inited');
+  OnFinishChanges();
+}
+
+function AddKMLLayer(url)
+{
+  if (myKMLLayer)
+    map.removeLayer(myKMLLayer);
+  myKMLLayer = new L.KML(url, {async: true});
+  myKMLLayer.on("loaded", function(e) { map.fitBounds(e.target.getBounds()); });
+  map.addLayer(myKMLLayer);
+}
+
+function AddGPXLayer(url)
+{
+  if (myKMLLayer)
+    map.removeLayer(myKMLLayer);
+  myKMLLayer = new L.GPX(url, {async: true});
+  myKMLLayer.on("loaded", function(e) { map.fitBounds(e.target.getBounds()); });
+  map.addLayer(myKMLLayer);
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+
+  l = L.polyline(pathA, {
+    color: color, 
+    opacity: opacityVal, 
+    weight: 6,
+    zIndexOffset: 1000,
+    zIndex: 1000
+  });
+  pathLayer.addLayer(l);
+  l.on('click', OnRouteClick);
+}
+
+function AddPathMarker(img, pos)
+{
+  AddImgMarker(img, pos, pathMarkersLayer);
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  pathLayer.clearLayers();
+  pathMarkersLayer.clearLayers();
+}
+
+function AddImgMarker(img, pos, layer)
+{
+  if (inited == 0)
+    return -1;
+
+  m = L.marker(pos, {
+    clickable: false,
+    icon: L.icon({
+      iconUrl: img,
+      iconAnchor: [10, 34]
+    })
+  });
+  layer.addLayer(m);
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  ClearMarkersAB();
+  AddImgMarker(imgA, posA, markersABLayer);
+  AddImgMarker(imgB, posB, markersABLayer);
+}
+
+function ClearMarkersAB()
+{
+  markersABLayer.clearLayers();
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  ClearMarkerD();
+  if (marker) {
+    marker.setLatLngs(border);
+    marker.redraw();
+  } else {
+    marker = L.polygon(border, {
+      color: "#000000",
+      opacity: 1,
+      weight: 2,
+      fillColor: "#00FF00",
+      fillOpacity: 1
+    });
+    markerLayer.addLayer(marker);
+  }
+  marker.bringToFront();
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    markerLayer.removeLayer(marker);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r, rPix)
+{
+  if (inited == 0)
+    return -1;
+  ClearMarker();
+  if(markerD) {
+    markerD.setLatLng(c);
+    markerD.redraw();
+  } else {
+    markerD = L.circle(c, r, {
+      fillColor: "#00FF00",
+      fillOpacity: 0.5,
+      stroke: false
+    });
+    markerLayer.addLayer(markerD);
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    markerLayer.removeLayer(markerD);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  markerLayer.clearLayers();
+  marker = null;
+  markerD = null;
+}
+
+function PanTo(pos)
+{
+  map.panTo(pos);
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.fitBounds([sw, ne]);
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  if (anchorPos != null) {
+    map.setZoomAround(anchorPos, zoom);
+  } else {
+    map.setZoom(zoom);
+  }
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onload="MyCallback('loaded', true)"
+>
+  <div id="map_canvas" style="width: 100%; height: 100%">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Open Street Maps...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+  </script>
+</body>
+
+</HTML>

@@ -20,3 +20,7 @@ egui_extras.workspace = true
 egui_plot.workspace = true
 walkers.workspace = true
 rfd.workspace = true
+
+[dev-dependencies]
+rv-core = { workspace = true, features = ["testutil"] }
+egui_kittest = { version = "0.37", features = ["eframe", "snapshot", "wgpu"] }

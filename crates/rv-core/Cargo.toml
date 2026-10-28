@@ -6,5 +6,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+# Test fixture builders (used by other crates' tests).
+testutil = []
+
 [dependencies]
 chrono.workspace = true

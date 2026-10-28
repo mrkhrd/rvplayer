@@ -104,7 +104,8 @@ pub fn from_tdatetime(days: f64) -> Option<NaiveDateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mp4::{read_movie, tests::movie_with_track};
+    use crate::mp4::read_movie;
+    use crate::testutil::movie_with_track;
 
     fn g_rev(lon: i32, lat: i32, speed10: u16, course_half: u8) -> Vec<u8> {
         let mut v = b"gReV".to_vec();

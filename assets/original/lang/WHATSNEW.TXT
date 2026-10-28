@@ -1,0 +1,335 @@
+﻿=================
+v6.1 | 2015.08.01
+=================
+ + Russia maps "Genshtab" and "Rosreestr".
+ + Overlay custom KML and GPX files on the map.
+ + Tool for measuring the distance on the map.
+ + Copy the current coordinates to the clipboard.
+ + Launch any command at the current point, for example for JOSM.
+ + Able to calculate speed and direction only by the coordinates.
+ + Optimization of memory allocation when join of very large group of files.
+ + The correct calculation of the length of the track of accelerated video.
+ + Slovenian language support [sl] (by Miha Planinšek).
+ + China language support [zh] (by Oil P).
+ + GPS data support for dash cams:
+   + Ion Adventure.
+   + Street Storm STR-9970 Twin.
+   + Parkvision PVR-50G.
+   + SHO-ME Combo 3.
+
+=================
+v6.0 | 2014.10.10
+=================
+ + Enhancements to support changed GPS formats for different dashcam models.
+ + Correction export fragments for very specific situations.
+ + Slovak language support [sk] (by lndy Jones).
+
+=================
+v5.9 | 2014.06.25
+=================
+ + Extended KML format saving: animation in GoogleEarth.
+ + GPS data support for GINZZU FX-905HD GPS dash cam.
+ + GPS data support for Street Guardian SG9665GM dash cam.
+ + Support parking mode files for DATAKAM dash cams.
+
+=================
+v5.8 | 2014.04.26
+=================
+ + Support files encrypted by password for DATAKAM dash cams.
+
+=================
+v5.7 | 2014.03.30
+=================
+ + GPS data support for SAMOON 3H2 dash cam.
+ + Italian language support [it] (by Gabriele Dal Toso).
+ + Some fixes for clipping and playback.
+
+=================
+v5.6 | 2014.01.19
+=================
+ + GPS/G-Sensor data support for dash cams:
+   + Chelong CL-RD12FH-D-S
+   + ProCam SX8
+   + 6000A
+
+=================
+v5.5 | 2013.12.11
+=================
+ + Czech language support [cs] (by Martin Volek, kameravaute.cz).
+ + GPS/G-Sensor data support for dash cams:
+   + AdvoCam FD6S Profi-GPS
+   + Lukas LK3700G
+   + DOD LS430W
+
+=================
+v5.4 | 2013.11.11
+=================
+ + Screenshot images have the EXIF with GPS data.
+ + Fixed problem of capturing keys when you type in the other windows, and activating the main window when hint popups.
+ + GPS/G-Sensor data support for dash cams:
+   + GT680W
+   + AdvoCam-FD7 Profi-GPS
+   + Street Storm CVR-A7510-G
+   + Digma DVR-80G
+   + SUBINI 2000B (iBang Magic Vision VR-400)
+   + VicoVation WF1
+   + Some dashcams with KML and SRT tracks
+
+=================
+v5.3 | 2013.09.16
+=================
+ + Some improvements of file recovery algorithm.
+ + BlackVue's files recovering.
+ + Fixed export fragments for special occasions.
+ + Fixed resetting video position when you change the speed.
+ + GPS data support for dash cams:
+   + Trendvision QX3 / KARKAM QX3 Neo
+   + Mini 0801
+
+=================
+v5.2 | 2013.08.11
+=================
+ + Repair broken files.
+ + When export fragment - GPS included inside video file.
+ + Livue LB100 dashcam support (Winycam V300HD).
+ + PowerUCC Panorama II dashcam support.
+ + PCM and AMR audio support in MOV / MP4 files (for example, dashcam DOD LS300W).
+ + Polish language support [pl] (by Jacek Horabik).
+ + French language support [fr] (by Christian WALBERT).
+
+=================
+v5.1 | 2013.07.08
+=================
+ + Leaflet API supported.
+ + Maps for All:
+   + Nokia OVI (HERE)
+   + Yahoo
+   + ArcGIS
+ + Maps for China:
+   + Baidu
+ + Maps for Russia:
+   + Navitel
+   + Mail.ru
+   + Geocenter-Consulting
+ + GPS data support for dash cams:
+   + Eeyelog HDW001, Eeyelog EHD63
+   + SeeMax DVR RG400 GPS
+   + Karkam QL3
+   + Carcam QS3
+   + Eplutus DVR-GS953
+   + TrendVision TV-100
+   + CamBox
+   + VIOFO GS900, VF960
+
+=================
+v5.0 | 2013.06.13
+=================
+ + Built-in MOV/MP4 splitter
+   + Now you need not install any codecs in Windows Vista/7/8.
+   + There is no pause during switching to the next file in the group.
+   + Satisfying video speedup.
+ + GPS data support for dash cams:
+   + Cansonic CDV 800
+   + Mio Mivue 388
+   + Car Black Box X3000
+   + VR-102 Critical Witness
+ + Japanese language support [jp] (by Naoki Furuhashi).
+ + Vietnamese language support [vi] (by dichvuhuuich.com).
+ + Bulgarian language support [bg] (by AllTimeCams.com).
+
+=================
+v4.0 | 2013.02.27
+=================
+ + Full supported .map GPS format, including G-Sensor.
+ + Able to reflect the coordinates to fix the dash cam mistakes.
+ + Able to execute any JavaScript code after map loaded.
+ + Completely remade the algorithm of grouping and "time correction" if recorder made a mistakes.
+ + GPS data support for dash cams:
+   + Roadline G9
+   + Vosonic Flexmedia V747W
+   + Ritmix AVR-820
+   + GPS1000A
+   + GS1000, GS2000, GS5000, GS8000, GS9000
+   + Tenex DVR 520
+   + RoadHawkHD
+   + Texet DVR-1GS
+   + F70G, F90G
+ + Added translation for languages:
+   + Latvian [lv] (by Egils Lielpeteris)
+   + German [de] (by Ralf Lebrecht)
+   + Hungarian [hu] (by Laszlo Sinka)
+   + Portuguese [pt] (by Ricardo Fontes Portal)
+   + Norwegian [no] (by Klar Sikt AS)
+   + Lithuanian [lt] (by Romanas Nomeika)
+   + Dutch-Netherlands [nl] (by Robert Gels)
+   + Romanian [ro] (by Mtz)
+
+=================
+v3.9 | 2012.06.19
+=================
+ + Open Street Maps and Bing Maps over OpenLayers API.
+ + GPS data support for MagicEye FG720 dash cam.
+ + Belarusian language support [by] (by Siarjuk Uladzimirau).
+
+=================
+v3.8 | 2012.06.05
+=================
+ + GPS data support for Digma DVR-105G dash cam.
+ + Able to merge into one file when converting GPSLog files.
+ + Setup Template for Subtitles.
+ + Spanish language support [es] (by Rafael Lopez).
+
+=================
+v3.7 | 2012.05.21
+=================
+ + Support for program SymDVR, which makes the dash cam from any phone based on Symbian.
+ + Yandex Maps API 2.0.
+
+=================
+v3.6 | 2012.04.28
+=================
+ + New dialog for cropping/joining fragments. You can add chunks of any trip and change their order.
+ + Changing the playback speed when cutting. You can speed up or slow down any piece of exported fragment.
+ + Exported video fragments technically have no different from the original files, and even playing on your DVR (if you have not changed the speed).
+ + Fixed picture shaking in QuickTimePlayer and AdobePremiere when playing exported fragments with format 720p.
+ + Fixed sound in exported fragment from files like MVI0xxxx.MOV.
+
+=================
+v3.5 | 2012.03.31
+=================
+ + Yandex Maps support.
+ + Automatic synchronization of video and GPS file numbers (all dash cam models).
+ + Allow multi-fragment cyclical video playback.
+ + Ukrainian language support [ua] (by Vadym Lishchenko).
+
+=================
+v3.3 | 2012.03.07
+=================
+ + Map track export to CSV (Excel, etc).
+ + GPS support for Akenori DriveCam 1080 Pro dash cam.
+ + New file format support: *.nmea.
+ + Additional menu buttons on top of the file list window.
+ + Support of SRT subtitles for video fragments. SRT subtitles are supported by YouTube, and many video players: VLC, MPC, MPlayer, CrystalPlayer, DirectVobSub, ...
+ + Support of embedded MOV subtitle. Playback: VLC, QuickTime(Windows), DirectVobSub.
+ + Bug fixes for application start up on Windows with Chinese and some other localizations.
+
+=================
+v3.1 | 2012.02.11
+=================
+ + DVXA file format playback bug fix with new k-lite codec packs.
+ + Bug fix for DATAKAM GS-800 files where G-sensor information is present.
+
+=================
+v2.9 | 2012.02.08
+=================
+ + GPS data support for DATAKAM dash cam models: GS-400, GS-600, GS-610, GS-700, GS-800.
+
+=================
+v2.7 | 2012.02.06
+=================
+ + GPS data support for BlackVue DR400G dash cam.
+ + Support for Metric (km) / British Imperial (miles) measurements.
+ + Time Zone selection support.
+ + Support of standard file selection with Ctrl & Shift keys in the list.
+ + Profile for video playback without GPS data support.
+
+=================
+v2.6 | 2012.01.31
+=================
+ + GPS data support for dash cams Samoon DV5E5, TeXet DVR 1GP and GPS1000 (DVR DS103).
+ + Saving of the file list window setting between sessions.
+ + Saving of the selected map view (map/satellite) between sessions.
+ + Mouse wheel support for zooming.
+ + Allow to clear file list window.
+ + Bug fix for the indicated duration of file fragment in QuickTime and AdobePremiere.
+
+=================
+v2.5 | 2011.12.20
+=================
+ + Customization support for dash cams models such as: DOD GS600, Carcam Q3, etc.
+ + Integration of stand-alone GPS track files.
+ + Bug fix: application error when trying to open a drive with no media.
+ + Click to pause.
+
+=================
+v2.4 | 2011.12.12
+=================
+ + File drag & drop support.
+ + Selected video fragment is now highlighted in blue.
+ + Command line support of files to be played back on application start up for .mov files.
+ + Bug fix: application window location setting is now saved between sessions.
+
+=================
+v2.2 | 2011.12.05
+=================
+ + Options for video fragment export (include/exclude sound, GPS track info).
+ + Saving of all application settings between sessions.
+
+=================
+v2.1 | 2011.12.03
+=================
+ + Lossless export of video fragments.
+ + Donate button.
+
+=================
+v2.0 | 2011.11.28
+=================
+ + Frame-by-frame video playback.
+ + Support of vertical and horizontal video rotation. Useful for dash cams mounted upside down.
+ + Show current elevation as reported by GPS.
+
+=================
+v1.9 | 2011.11.26
+=================
+ + Russian & English application interface support.
+ + Support file export to local drives directly from the application with full corresponding data (original file dates, GPS data, etc.)
+ + Added icons for menu buttons.
+ + Allow custom size for map cursor.
+
+=================
+v1.8 | 2011.11.15
+=================
+ + Support of various video playback functions: zoom, stretch, 1:1, ...
+ + GPS Log converted interface enhancements - track info, map location, log removals, etc.
+
+=================
+v1.6 | 2011.11.13
+=================
+ + Automatic file grouping by time and location. Single trips are shown as one file.
+ + Support GPS elevation data for GPS Log conversion.
+ + Support of playback navigation by means of clicking on the timeline graph. Also support of timeline zooming.
+ + Added  video replay between points A-B.
+
+=================
+v1.4 | 2011.11.07
+=================
+ + GPS Log conversion.
+ + Variable video playback speed support (behavior may vary due installed video codecs).
+ + Allow change of the order of columns in the file info window.
+ + Floating info window with detailed map point location and enlarged graph info.
+
+=================
+v1.1 | 2011.11.01
+=================
+ + Allow closure of supplementary application windows.
+ + Screen capture saving.
+ + Multi-format GPS tracks conversion support (KML, GPX, PLT).
+
+=================
+v1.0 | 2011.10.30
+=================
+ + Support of Enhanced Video Renderer (Windows Vista / 7 only), which means
+   + Hardware video decoding support. FullHD videos will play just fine even on an archaic computer if it has a new video card.</li>
+   + Support of non-linear video resizing. Video aspect size can change to fill the screen (i.e. show 1920x1080 video on 1024x768 monitor)
+   + Smooth playback speed control (done by video card hardware whenever possible).
+   + Multi-monitor video playback support.
+ + Application window resizing - size of the window and controls is no longer fixed. 
+ + Automatic search for video source files, no where the application was opened from.
+ + Show the whole route on Google Maps with cursor on current location and direction of travel.
+ + Click on the map to view video associated with that point.
+ + Distance travelled calculations
+ + Custom resize of the video player window.
+ + Customization of graphs.
+ + Display of local critical values to graphs.
+ + Video file player control with cursor keys (left & right).
+ + Enable/disable file overwrite protection.

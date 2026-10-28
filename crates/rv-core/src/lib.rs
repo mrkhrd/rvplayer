@@ -3,6 +3,8 @@
 pub mod fileinfo;
 pub mod mp4;
 pub mod rvmi;
+#[cfg(any(test, feature = "testutil"))]
+pub mod testutil;
 pub mod track;
 
 pub use fileinfo::FileInfo;

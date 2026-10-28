@@ -3,6 +3,7 @@
 pub mod controls;
 pub mod file_list;
 pub mod graphs;
+pub mod icons;
 pub mod map_view;
 pub mod menu;
 pub mod video;

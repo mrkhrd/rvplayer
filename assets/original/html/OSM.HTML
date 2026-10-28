@@ -1,0 +1,345 @@
+<HTML>
+<head>
+  <title>Registrator Viewer - Open Street Maps Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <style>
+    .olTileImage { cursor: url(openhand.cur), default !important; }
+  </style>
+
+  <script type="text/javascript" src="http://www.openlayers.org/api/OpenLayers.js"></script>
+
+<script type="text/javascript">
+
+var map;
+var pathLayer;
+var pathMarkersLayer;
+var markerLayer;
+var marker;
+var markerD;
+var markersABLayer;
+var inited = 0;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.calculateBounds();
+  c = b.getCenterLonLat();
+  size = map.getSize();
+  MyCallback(cmd + 
+    '?t=' + b.top + '&l=' + b.left + '&b=' + b.bottom + '&r=' + b.right + 
+    '&w=' + size.w + '&h=' + size.h +
+    '&x=' + c.lon + '&y=' + c.lat +
+    '&z=' + map.getZoom() +
+    '&mt=' + map.baseLayer.name
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(e)
+{
+  lonlat = map.getLonLatFromPixel(e.xy);
+  MyCallback('routeClick?x=' + lonlat.lon + '&y=' + lonlat.lat);
+}
+
+function initialize(cetnerPosY, cetnerPosX, zoomVal, mapType)
+{
+  if (typeof(OpenLayers) == "undefined") {
+    return;
+  }
+
+  document.getElementById("map_canvas").innerHTML = '';
+  map = new OpenLayers.Map("map_canvas", {
+    projection: new OpenLayers.Projection("EPSG:900913"),
+    displayProjection: new OpenLayers.Projection("EPSG:4326"),
+    //units: "m",
+    //numZoomLevels: 22,
+    //maxExtent: new OpenLayers.Bounds(-20037508, -20037508, 20037508, 20037508.34),
+    controls: [
+      new OpenLayers.Control.Navigation(),
+      new OpenLayers.Control.PanZoom(),
+      new OpenLayers.Control.ScaleLine(),
+      new OpenLayers.Control.LayerSwitcher(),
+      new OpenLayers.Control.OverviewMap()
+    ],
+    layers: [
+      new OpenLayers.Layer.OSM("Open Steet Map"),
+      new OpenLayers.Layer.OSM("Open Cycle Map", 
+       ["http://a.tile.opencyclemap.org/cycle/${z}/${x}/${y}.png", 
+        "http://b.tile.opencyclemap.org/cycle/${z}/${x}/${y}.png", 
+        "http://c.tile.opencyclemap.org/cycle/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Open Transport Map", 
+       ["http://a.tile2.opencyclemap.org/transport/${z}/${x}/${y}.png", 
+        "http://b.tile2.opencyclemap.org/transport/${z}/${x}/${y}.png", 
+        "http://c.tile2.opencyclemap.org/transport/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Open Landscape Map", 
+       ["http://a.tile3.opencyclemap.org/landscape/${z}/${x}/${y}.png",
+        "http://b.tile3.opencyclemap.org/landscape/${z}/${x}/${y}.png",
+        "http://c.tile3.opencyclemap.org/landscape/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Open Outdoors Map", 
+       ["http://a.tile.thunderforest.com/outdoors/${z}/${x}/${y}.png",
+        "http://b.tile.thunderforest.com/outdoors/${z}/${x}/${y}.png",
+        "http://c.tile.thunderforest.com/outdoors/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Open Surfer Map", 
+       ["http://129.206.74.245:8001/tms_r.ashx?x=${x}&y=${y}&z=${z}"]),
+      new OpenLayers.Layer.OSM("MapQuest OSM", 
+       ["http://otile1.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png", 
+        "http://otile2.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png", 
+        "http://otile3.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png", 
+        "http://otile4.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("MapQuest Aerial", 
+       ["http://otile1.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png", 
+        "http://otile2.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png", 
+        "http://otile3.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png", 
+        "http://otile4.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Nokia Ovi(Here) Road", 
+       ["http://1.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/normal.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://2.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/normal.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://3.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/normal.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://4.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/normal.day/${z}/${x}/${y}/256/png8?token=&app_id="]),
+      new OpenLayers.Layer.OSM("Nokia Ovi(Here) Satellite", 
+       ["http://1.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/satellite.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://2.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/satellite.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://3.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/satellite.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://4.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/satellite.day/${z}/${x}/${y}/256/png8?token=&app_id="]),
+      new OpenLayers.Layer.OSM("Nokia Ovi(Here) Hybrid", 
+       ["http://1.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/hybrid.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://2.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/hybrid.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://3.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/hybrid.day/${z}/${x}/${y}/256/png8?token=&app_id=",
+        "http://4.maptile.lbs.ovi.com/maptiler/v2/maptile/newest/hybrid.day/${z}/${x}/${y}/256/png8?token=&app_id="]),
+      new OpenLayers.Layer.Bing({name: "Bing Road",
+        type: "Road",
+        key: "Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG"
+      }),
+      new OpenLayers.Layer.Bing({name: "Bing Satellite",
+        type: "Aerial",
+        key: "Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG"
+      }),
+      new OpenLayers.Layer.Bing({name: "Bing Hybrid",
+        type: "AerialWithLabels",
+        key: "Al6ffGPIYHVSjIKLQU_s5d-d4Jq5vETMRlAX_KpPo1rORJyZ7hbzjZ57CIBPIAHG"
+      }),
+      new OpenLayers.Layer.OSM("ArcGIS - Esri", 
+       ["http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}"]),
+      new OpenLayers.Layer.OSM("Stamen", 
+       ["http://a.tile.stamen.com/toner/${z}/${x}/${y}.png",
+        "http://b.tile.stamen.com/toner/${z}/${x}/${y}.png",
+        "http://c.tile.stamen.com/toner/${z}/${x}/${y}.png"]),
+      new OpenLayers.Layer.OSM("Rus - kosmosnimki.ru", 
+       ["http://irs.gis-lab.info/?layers=irs&request=GetTile&z=${z}&x=${x}&y=${y}"])
+    ]
+  });
+  for (i in map.layers) {
+    if (map.layers[i].name == mapType) {
+      map.setBaseLayer(map.layers[i]);
+      break;
+    }
+  }
+  map.setCenter(new OpenLayers.LonLat(cetnerPosX, cetnerPosY).transform(map.displayProjection, map.projection), zoomVal);
+
+  pathLayer = new OpenLayers.Layer.Vector("Path Line", {displayInLayerSwitcher: false});
+  map.addLayer(pathLayer);
+  markerLayer = new OpenLayers.Layer.Vector("Arrow", {displayInLayerSwitcher: false});
+  map.addLayer(markerLayer);
+  pathMarkersLayer = new OpenLayers.Layer.Markers("SF Markers", {displayInLayerSwitcher: false}); 
+  map.addLayer(pathMarkersLayer); 
+  markersABLayer = new OpenLayers.Layer.Markers("AB Markers", {displayInLayerSwitcher: false}); 
+  map.addLayer(markersABLayer); 
+
+  map.events.register('move', map, OnBoundsChanged);
+  map.events.register('moveend', map, OnFinishChanges);
+  map.events.register('click', map, OnRouteClick);
+
+  inited = 1;
+  MyCallback('inited');
+  OnFinishChanges();
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+
+  l = new OpenLayers.Geometry.LineString(pathA);
+  line = new OpenLayers.Feature.Vector(l, {}, {
+    strokeColor: color,
+    strokeOpacity: opacityVal,
+    strokeWidth: 6,
+    strokeLinecap2: 'round'
+  });
+  pathLayer.addFeatures([line]);
+}
+
+function AddPathMarker(img, pos)
+{
+  AddImgMarker(img, pos, pathMarkersLayer);
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  pathLayer.removeAllFeatures();
+  pathMarkersLayer.clearMarkers();
+}
+
+function AddImgMarker(img, pos, layer)
+{
+  if (inited == 0)
+    return -1;
+
+  var size = new OpenLayers.Size(20,34);
+  var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
+  m = new OpenLayers.Marker(new OpenLayers.LonLat(pos.x, pos.y), new OpenLayers.Icon(img, size, offset))
+  layer.addMarker(m);
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  ClearMarkersAB();
+  AddImgMarker(imgA, posA, markersABLayer);
+  AddImgMarker(imgB, posB, markersABLayer);
+}
+
+function ClearMarkersAB()
+{
+  markersABLayer.clearMarkers();
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  ClearMarkers();
+  if (marker) {
+    marker.geometry.components = border;
+    markerLayer.redraw();
+  } else {
+    marker = new OpenLayers.Feature.Vector(new OpenLayers.Geometry.LinearRing(border), {}, {
+      fillColor: "#00FF00",
+      fillOpacity: 1,
+      strokeColor: "#000000",
+      strokeOpacity: 1,
+      strokeWidth: 2
+    });
+    markerLayer.addFeatures([marker]);
+  }
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    markerLayer.removeFeatures([marker]);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r, rPix)
+{
+  if (inited == 0)
+    return -1;
+  ClearMarkers();
+  if(markerD) {
+    markerD.geometry.x = c.x;
+    markerD.geometry.y = c.y;
+    markerLayer.redraw();
+  } else {
+    markerD = new OpenLayers.Feature.Vector(c, {}, {
+      pointRadius: rPix,
+      fillColor: "#00FF00",
+      fillOpacity: 0.5,
+      strokeWidth: 0
+    });
+    markerLayer.addFeatures([markerD]);
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    markerLayer.removeFeatures([markerD]);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  markerLayer.removeFeatures(markerLayer.features);
+  marker = null;
+  markerD = null;
+}
+
+function PanTo(pos)
+{
+  map.panTo(new OpenLayers.LonLat(pos.x, pos.y));
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.zoomToExtent(new OpenLayers.Bounds(sw.x, sw.y, ne.x, ne.y));
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  if (cetnerPos != null) {
+    map.setCenter(new OpenLayers.LonLat(cetnerPos.x, cetnerPos.y), zoom);
+  } else {
+    map.zoomTo(zoom);
+  }
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onload="MyCallback('loaded', true)"
+>
+  <div id="map_canvas" style="width: 100%; height: 100%">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Open Street Maps...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+  </script>
+</body>
+
+</HTML>

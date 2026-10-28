@@ -1,0 +1,9 @@
+﻿gmStartX      "37.62"
+gmStartY      "55.75"
+
+FileList_Col_Duration   "Мин."
+
+MyEMail                 "info@datakam.ru"
+MySiteBrand             "http://www.datakam.ru"
+MyCity                  "DATAKAM Москва, Россия"
+MyName                  "+7(495) 647-09-79"

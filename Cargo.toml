@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rv-core", "crates/rv-video", "crates/rv-app"]
+members = ["crates/rv-core", "crates/rv-video", "crates/rv-ffi", "crates/rv-app", "crates/rv-fm"]
 # Vendored third-party crates build as dependencies but are not tested as workspace members.
 exclude = ["vendor"]
 
@@ -13,13 +13,15 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 rv-core = { path = "crates/rv-core" }
 rv-video = { path = "crates/rv-video" }
+rv-fm = { path = "crates/rv-fm" }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 eframe = "0.37"
-egui = "0.37"
+egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
 egui_extras = "0.37"
 egui_plot = "0.38"
 walkers = "0.64"
 rfd = "0.17"
+serde_json = "1"
 rayon = "1"
 # FilmCraft's pure-Rust decoders, vendored (see vendor/filmcraft/README.md).
 filmcraft-h264 = { path = "vendor/filmcraft/h264" }

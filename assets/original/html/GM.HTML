@@ -1,0 +1,278 @@
+<HTML xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Registrator Viewer - Google Maps Wrapper</title>
+
+  <meta http-equiv="author" content="Vadikus Production">
+
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <script type="text/javascript" src="http://maps.google.com/maps/api/js?v=3.18&sensor=false"></script>
+
+<script type="text/javascript">
+
+var map;
+var marker;
+var markerD;
+var mylines = [];
+var markersAB = [];
+var inited = 0;
+
+function MyCallback(s, force)
+{
+  if ((inited == 0) && !force)
+    return -1;
+  try {
+    document.location = 'http://callback/' + s;
+  } catch (e) { }
+}
+
+function CallbackAllPositionInfo(cmd)
+{
+  if (inited == 0)
+    return -1;
+  b = map.getBounds();
+  ne = b.getNorthEast();
+  sw = b.getSouthWest();
+  div = map.getDiv();
+  c = map.getCenter();
+  MyCallback(cmd + 
+    '?t=' + ne.lat() + '&l=' + sw.lng() + '&b=' + sw.lat() + '&r=' + ne.lng() + 
+    '&w=' + div.offsetWidth + '&h=' + div.offsetHeight +
+    '&x=' + c.lng() + '&y=' + c.lat() +
+    '&z=' + map.getZoom() +
+    '&mt=' + map.getMapTypeId()
+  );
+}
+
+function OnFinishChanges()
+{
+  CallbackAllPositionInfo('view');
+}
+
+function OnBoundsChanged()
+{
+  CallbackAllPositionInfo('bounds');
+}
+
+function OnRouteClick(event)
+{
+  MyCallback('routeClick?x=' + event.latLng.lng() + '&y=' + event.latLng.lat());
+}
+
+function initialize(cetnerPosY, cetnerPosX, zoomVal, mapType)
+{
+  if (typeof(google) == "undefined") {
+    return;
+  }
+
+  if ((mapType != google.maps.MapTypeId.HYBRID) &&
+      (mapType != google.maps.MapTypeId.SATELLITE) &&
+      (mapType != google.maps.MapTypeId.TERRAIN))
+  {
+    mapType = google.maps.MapTypeId.ROADMAP;
+  }
+
+  map = new google.maps.Map(document.getElementById("map_canvas"), {
+    zoom: zoomVal,
+    center: new google.maps.LatLng(cetnerPosY, cetnerPosX),
+    backgroundColor: "#cccccc",
+    mapTypeId: mapType
+  });
+
+  google.maps.event.addListener(map, 'idle', OnFinishChanges);
+  google.maps.event.addListener(map, 'bounds_changed', OnBoundsChanged);
+
+  inited = 1;
+  MyCallback('inited');
+}
+
+function AddPath(pathA, color, opacityVal)
+{
+  if (inited == 0)
+    return -1;
+  line = new google.maps.Polyline({
+    map: map,
+    path: pathA,
+    strokeColor: color,
+    strokeOpacity: opacityVal,
+    strokeWeight: 6.0,
+    zIndex: 2
+  });
+  mylines.push(line);
+  google.maps.event.addListener(line, 'click', OnRouteClick);
+}
+
+function AddPathMarker(img, pos)
+{
+  mylines.push(AddImgMarker(img, pos, 1));
+}
+
+function ClearPath()
+{
+  if (inited == 0)
+    return -1;
+  for (i in mylines) {
+    mylines[i].setMap(null);
+  }
+  mylines.length = 0;					
+}
+
+function AddImgMarker(img, pos, zInd)
+{
+  if (inited == 0)
+    return -1;
+  m = new google.maps.Marker({
+    icon: img,
+    position: pos,
+    flat: true,
+    map: map,
+    zIndex: zInd
+  })
+  google.maps.event.addListener(m, 'click', OnRouteClick);
+  return m;
+}
+
+function AddABMarker(img, pos)
+{
+  markersAB.push(AddImgMarker(img, pos, 2));
+}
+
+function SetAB(imgA, posA, imgB, posB)
+{
+  if (markersAB.length == 0) {
+    AddABMarker(imgA, posA);
+    AddABMarker(imgB, posB);
+  } else {
+    markersAB[0].setPosition(posA);
+    markersAB[1].setPosition(posB);
+  }
+}
+
+function ClearMarkersAB()
+{
+  for (i in markersAB) {
+    markersAB[i].setMap(null);
+  }
+  markersAB.length = 0;					
+}
+
+function PlaceMarker(border)
+{
+  if (inited == 0)
+    return -1;
+  if(marker) {
+    marker.setPath(border);
+  } else {
+    marker = new google.maps.Polygon({
+      map: map,
+      path: border,
+      fillColor: "#00FF00",
+      fillOpacity: 1.00,
+      strokeColor: "#000000",
+      strokeOpacity: 1.00,
+      strokeWeight: 2.0,
+      clickable: false,
+      zIndex: 4
+    });
+  }
+  if (markerD) {
+    ClearMarkerD();
+  }
+}
+
+function ClearMarker()
+{
+  if (marker) {
+    marker.setMap(null);
+    marker = null;
+  }
+}
+
+function PlaceMarkerD(c, r)
+{
+  if (inited == 0)
+    return -1;
+  if (marker) {
+    ClearMarker();
+  }
+  if(markerD) {
+    markerD.setCenter(c);
+    markerD.setRadius(r);
+  } else {
+    markerD = new google.maps.Circle({
+      map: map,
+      center: c,
+      radius: r,
+      fillColor: "#00FF00",
+      fillOpacity: 0.5,
+      strokeWeight: 0,
+      clickable: false,
+      zIndex: 4
+    });
+  }
+}
+
+function ClearMarkerD()
+{
+  if (markerD) {
+    markerD.setMap(null);
+    markerD = null;
+  }
+}
+
+function ClearMarkers()
+{
+  ClearMarker();
+  ClearMarkerD();
+}
+
+function PanTo(pos)
+{
+  map.panTo(pos);
+}
+
+function SetMapBounds(sw, ne)
+{
+  map.fitBounds(new google.maps.LatLngBounds(sw, ne));
+}
+
+function SetMapZoom(zoom, anchorPos, cetnerPos)
+{
+  if (cetnerPos != null)
+    map.setCenter(cetnerPos);
+  map.setZoom(zoom);
+}
+
+</script>
+
+</head>
+
+<body
+  leftmargin=0 topmargin=0 rightmargin=0 bottommargin=0 marginheight=0 marginwidth=0
+  style="padding: 0px; margin: 0px; width: 100%; height: 100%; background-color: #cccccc;"
+  scroll=no
+  onload="MyCallback('loaded', true)"
+>
+  <div id="map_canvas" style="width: 100%; height: 100%">
+    <center>
+    <br>
+    JavaScript not enabled ?
+    </center>
+  </div>
+
+  <script type="text/javascript">
+    document.getElementById("map_canvas").innerHTML =
+      '<center>' +
+      '<br>' +
+      'Loading Google Maps...<br>' +
+      '<br>' +
+      'No Internet connection?<br>' +
+      '<br>' +
+      '<form action=""><input type=submit value="Refresh"></form>' +
+      '<br>'+
+      'I have the Internet, <a target=_blank href="http://www.registratorviewer.com/helpie_en.html">help me</a>.'+
+      '</center>';
+  </script>
+</body>
+
+</HTML>
