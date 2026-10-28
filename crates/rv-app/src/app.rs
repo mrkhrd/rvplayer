@@ -74,6 +74,9 @@ pub struct Playback {
     pub loop_ab: bool,
     pub mark_a: Option<f64>,
     pub mark_b: Option<f64>,
+    /// Incremented on every jump of the position (seek, stop, new file) so the video
+    /// follows; normal playback advances `position` without touching it.
+    pub seek_serial: u64,
 }
 
 pub struct View {
@@ -110,6 +113,7 @@ pub struct RvApp {
     pub map_memory: MapMemory,
     pub tiles: HttpTiles,
     pub show_about: bool,
+    pub video: ui::video::VideoView,
 }
 
 impl RvApp {
@@ -144,6 +148,7 @@ impl RvApp {
                 loop_ab: false,
                 mark_a: None,
                 mark_b: None,
+                seek_serial: 0,
             },
             view: View {
                 show_file_list: true,
@@ -158,6 +163,7 @@ impl RvApp {
             map_memory: MapMemory::default(),
             tiles,
             show_about: false,
+            video: ui::video::VideoView::default(),
         };
         if let Some(folder) = folder {
             app.open_folder(folder);
@@ -235,12 +241,13 @@ impl RvApp {
 
     pub fn seek(&mut self, t: f64) {
         self.playback.position = t.clamp(0.0, self.duration());
+        self.playback.seek_serial += 1;
     }
 
     pub fn toggle_play(&mut self) {
         if self.current().is_some() {
             if self.playback.position >= self.duration() {
-                self.playback.position = 0.0;
+                self.seek(0.0);
             }
             self.playback.playing = !self.playback.playing;
         }
@@ -248,7 +255,7 @@ impl RvApp {
 
     pub fn stop(&mut self) {
         self.playback.playing = false;
-        self.playback.position = 0.0;
+        self.seek(0.0);
     }
 
     fn poll_loader(&mut self) {
@@ -295,6 +302,7 @@ impl RvApp {
             && pos >= b
         {
             pos = a;
+            self.playback.seek_serial += 1;
         }
         if pos >= self.duration() {
             pos = self.duration();

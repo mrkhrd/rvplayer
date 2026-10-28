@@ -1,0 +1,13 @@
+[package]
+name = "filmcraft-bitstream"
+description = "Bit-level reading and writing (vendored from craft-libs craft-media::bitstream)"
+version = "0.14.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]

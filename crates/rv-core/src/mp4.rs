@@ -32,20 +32,28 @@ pub struct Track {
     pub duration: u64,
     pub width: f32,
     pub height: f32,
+    /// Decoder configuration record of a video sample entry (`avcC` / `hvcC` body).
+    pub codec_config: Option<Vec<u8>>,
+    /// `stss` sync (key) sample numbers, 1-based; `None` when every sample is a sync sample.
+    sync_samples: Option<Vec<u32>>,
     sample_sizes: Vec<u32>,
     chunk_offsets: Vec<u64>,
     /// `stsc` runs: (first chunk, 1-based; samples per chunk).
     sample_to_chunk: Vec<(u32, u32)>,
     /// `stts` runs: (sample count, sample delta).
     time_to_sample: Vec<(u32, u32)>,
+    /// `ctts` runs: (sample count, composition offset).
+    composition_offsets: Vec<(u32, i32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sample {
     pub offset: u64,
     pub size: u32,
-    /// Presentation time in seconds from the start of the track.
+    /// Presentation time in seconds from the start of the track (decode time + `ctts` offset).
     pub time: f64,
+    /// Sync (key) sample: decoding can start here.
+    pub sync: bool,
 }
 
 impl Movie {
@@ -95,6 +103,10 @@ impl Track {
             .time_to_sample
             .iter()
             .flat_map(|&(n, d)| std::iter::repeat_n(d, n as usize));
+        let mut cts = self
+            .composition_offsets
+            .iter()
+            .flat_map(|&(n, o)| std::iter::repeat_n(o, n as usize));
         let mut ticks = 0u64;
         let mut index = 0usize;
         for (chunk, &chunk_offset) in self.chunk_offsets.iter().enumerate() {
@@ -110,12 +122,22 @@ impl Track {
                 let Some(&size) = self.sample_sizes.get(index) else {
                     return out;
                 };
+                let presentation = ticks as i64 + i64::from(cts.next().unwrap_or(0));
                 let time = if self.timescale == 0 {
                     0.0
                 } else {
-                    ticks as f64 / self.timescale as f64
+                    presentation as f64 / self.timescale as f64
                 };
-                out.push(Sample { offset, size, time });
+                let sync = self
+                    .sync_samples
+                    .as_ref()
+                    .is_none_or(|s| s.binary_search(&(index as u32 + 1)).is_ok());
+                out.push(Sample {
+                    offset,
+                    size,
+                    time,
+                    sync,
+                });
                 offset += u64::from(size);
                 ticks += u64::from(deltas.next().unwrap_or(0));
                 index += 1;
@@ -280,6 +302,16 @@ fn read_trak<R: Read + Seek>(r: &mut R, parent: &BoxRef, t: &mut Track) -> io::R
             b"stsd" => {
                 let d = read_body(r, &b, MAX_INDEX_BOX)?;
                 t.codec = d.get(12..16).map_or([0; 4], |s| s.try_into().unwrap());
+                t.codec_config = video_codec_config(&d);
+            }
+            b"stss" => {
+                let d = read_body(r, &b, MAX_INDEX_BOX)?;
+                t.sync_samples = Some(table(&d, |c| c.u32())?);
+            }
+            b"ctts" => {
+                let d = read_body(r, &b, MAX_INDEX_BOX)?;
+                // Version 0 offsets are unsigned but writers store negative values the same way.
+                t.composition_offsets = table(&d, |c| Ok((c.u32()?, c.u32()? as i32)))?;
             }
             b"stts" => {
                 let d = read_body(r, &b, MAX_INDEX_BOX)?;
@@ -318,6 +350,32 @@ fn read_trak<R: Read + Seek>(r: &mut R, parent: &BoxRef, t: &mut Track) -> io::R
         }
     }
     Ok(())
+}
+
+/// `avcC` / `hvcC` body from the first entry of an `stsd` body, for H.264 / H.265 sample entries.
+fn video_codec_config(stsd: &[u8]) -> Option<Vec<u8>> {
+    // stsd: version/flags(4) count(4), entry: size(4) type(4) SampleEntry(8) VisualSampleEntry(70).
+    const ENTRY: usize = 8;
+    const CHILDREN: usize = ENTRY + 8 + 78;
+    let entry_size = u32::from_be_bytes(stsd.get(ENTRY..ENTRY + 4)?.try_into().ok()?) as usize;
+    let wanted: &[u8] = match stsd.get(ENTRY + 4..ENTRY + 8)? {
+        b"avc1" | b"avc3" => b"avcC",
+        b"hvc1" | b"hev1" => b"hvcC",
+        _ => return None,
+    };
+    let end = (ENTRY + entry_size).min(stsd.len());
+    let mut pos = CHILDREN;
+    while pos + 8 <= end {
+        let size = u32::from_be_bytes(stsd[pos..pos + 4].try_into().ok()?) as usize;
+        if size < 8 || pos + size > end {
+            return None;
+        }
+        if &stsd[pos + 4..pos + 8] == wanted {
+            return Some(stsd[pos + 8..pos + size].to_vec());
+        }
+        pos += size;
+    }
+    None
 }
 
 /// Full-box table: version/flags, entry count, entries.
@@ -474,6 +532,21 @@ pub(crate) mod tests {
             &file[s.offset as usize..s.offset as usize + s.size as usize],
             b"bbbbbb"
         );
+    }
+
+    #[test]
+    fn extracts_avcc_from_video_sample_entry() {
+        let avcc = mk(b"avcC", &[1, 0x64, 0, 0x28, 0xff]);
+        let mut entry = vec![0u8; 78];
+        entry.extend_from_slice(&avcc);
+        let entry = mk(b"avc1", &entry);
+        let stsd = [be(&[0, 1]), entry].concat();
+        assert_eq!(
+            video_codec_config(&stsd),
+            Some(vec![1, 0x64, 0, 0x28, 0xff])
+        );
+        let other = [be(&[0, 1]), mk(b"mp4a", &[0; 40])].concat();
+        assert_eq!(video_codec_config(&other), None);
     }
 
     #[test]
