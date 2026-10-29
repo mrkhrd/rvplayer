@@ -367,3 +367,88 @@ fn destroy_stops_promptly_and_clear_aborts_scan() {
     drop(fm);
     assert!(start.elapsed() < Duration::from_secs(5));
 }
+
+/// An NMEA RMC sentence with its checksum.
+fn rmc(time: &str, lat: &str, lon: &str) -> String {
+    let body = format!("GPRMC,{time},A,{lat},N,{lon},E,20.0,90.0,100324,,,A");
+    let sum = body.bytes().fold(0u8, |a, c| a ^ c);
+    format!("${body}*{sum:02X}\r\n")
+}
+
+#[test]
+fn default_loader_reads_sidecar_logs() {
+    let t = TempDir::new("sidecar-logs");
+    let v1 = t.0.join("FILE0001.MOV");
+    let v2 = t.0.join("FILE0002.MOV");
+    write_at(&v1, &video_movie(30, false), 0, 30);
+    write_at(&v2, &video_movie(30, false), 3600, 30);
+    let nmea: String = (0..30)
+        .map(|i| rmc(&format!("1000{i:02}.000"), &format!("6003.{:04}", 8176 + i * 10), "03019.6213"))
+        .collect();
+    write_at(&t.0.join("FILE0001.NMEA"), nmea.as_bytes(), 0, 30);
+    let gpx: String = std::iter::once("<?xml version=\"1.0\"?>\n<gpx version=\"1.1\"><trk><trkseg>\n".to_string())
+        .chain((0..30).map(|i| {
+            format!(
+                "<trkpt lat=\"60.{:06}\" lon=\"30.327022\"><time>2024-03-10T11:00:{i:02}Z</time></trkpt>\n",
+                63627 + i * 100
+            )
+        }))
+        .chain(std::iter::once("</trkseg></trk></gpx>\n".to_string()))
+        .collect();
+    write_at(&t.0.join("FILE0002.gpx"), gpx.as_bytes(), 3600, 30);
+
+    let fm = FileManager::new(false, true);
+    fm.add(&s(&t.0));
+    assert!(fm.wait_idle(IDLE));
+    let files: Vec<_> = (0..fm.len()).flat_map(|i| fm.item(i).unwrap().files).collect();
+    assert_eq!(files.len(), 2);
+    for (video, log, format) in [(&v1, "FILE0001.NMEA", "NMEA"), (&v2, "FILE0002.gpx", "gpx")] {
+        let f = files.iter().find(|f| f.video.path == s(video)).unwrap();
+        assert_eq!(f.info.gps, 2, "{log}: {:?}", f.info);
+        assert!(f.info.path.ends_with(log), "{}", f.info.path);
+        assert_eq!(f.info.gps_points, 30);
+        assert_eq!(f.info.format_id, format);
+        assert!(f.info.track_length > 40.0, "{}", f.info.track_length);
+    }
+    let rows = fm.rows();
+    assert!(rows.rows.iter().all(|r| r.summary.info.gps == 2), "{:?}", rows.rows);
+}
+
+#[test]
+fn attached_track_aligns_the_videos_and_shift_moves_them() {
+    let t = TempDir::new("set-track");
+    let video = t.0.join("A0001.MOV");
+    write_at(&video, &video_movie(60, false), 0, 60);
+    let gpx = t.0.join("other/trip.gpx");
+    // A 65 s trip that ended three hours after the camera clock says the video ended.
+    let (_, write) = fs_times(&fs::metadata(&video).unwrap());
+    let start = to_naive(write - 65.0 * SEC + 3.0 * 3600.0 * SEC).unwrap();
+    let gps = (1..=65)
+        .map(|i| GpsPoint { time: f64::from(i - 1), lat: 60.0 + f64::from(i) * 1e-4, lon: 30.0, altitude: 0.0, speed_kmh: 40.0, course: 0.0, warning: 0 })
+        .collect();
+    let loader = Arc::new(FakeGpx(Track { start: Some(start), gps, gsensor: vec![] }));
+    let fm = FileManager::with_loader(false, true, loader);
+    fm.add(&s(&video));
+    assert!(fm.wait_idle(IDLE));
+    assert!(fm.item(0).unwrap().files[0].info.path.is_empty());
+
+    // FL-073: durations within 11 s, so the video now ends with the track.
+    assert!(fm.set_track(0, &s(&gpx)));
+    let it = fm.item(0).unwrap();
+    let f = &it.files[0];
+    assert_eq!(f.info.path, s(&gpx));
+    assert!(f.info.previewed);
+    assert_eq!(f.info.gps, 2);
+    let track_end = write + 3.0 * 3600.0 * SEC - SEC;
+    assert!((f.video.time.finish - track_end).abs() < 1e-6, "{}", (f.video.time.finish - track_end) / SEC);
+    assert!((it.group.video.time.finish - track_end).abs() < 1e-6);
+
+    // FL-074: ten seconds later, and back.
+    fm.shift_video(0, 10.0 * SEC);
+    assert!((fm.item(0).unwrap().group.video.time.finish - (track_end + 10.0 * SEC)).abs() < 1e-6);
+    fm.shift_video(0, -10.0 * SEC);
+    assert!((fm.item(0).unwrap().group.video.time.finish - track_end).abs() < 1e-6);
+
+    // A file the loader cannot read attaches nothing.
+    assert!(!fm.set_track(0, &s(&t.0.join("none.txt"))));
+}

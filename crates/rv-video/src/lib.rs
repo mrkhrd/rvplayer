@@ -51,6 +51,11 @@ const PTS_PER_SECOND: f64 = 1_000_000.0;
 
 pub struct VideoStream {
     file: BufReader<File>,
+    /// File position after the last read, so the next sample can be reached with a relative seek
+    /// that keeps the read buffer (an absolute seek always discards it). `None` when unknown.
+    pos: Option<u64>,
+    /// While seeking: frames before this time are decoded but not converted (never shown).
+    skip_before: Option<f64>,
     samples: Vec<Sample>,
     config: Vec<u8>,
     decoder: Decoder,
@@ -89,6 +94,8 @@ impl VideoStream {
         let decoder = new_decoder(codec, &config)?;
         Ok(Self {
             file,
+            pos: None,
+            skip_before: None,
             samples: track.samples(),
             config,
             decoder,
@@ -149,12 +156,15 @@ impl VideoStream {
         self.next = target;
         self.ready.clear();
         self.flushed = false;
-        while let Some(f) = self.next_frame()? {
-            if f.time + 1e-6 >= time {
-                return Ok(Some(f));
+        self.skip_before = Some(time);
+        let found = loop {
+            match self.next_frame() {
+                Ok(Some(f)) if f.time + 1e-6 < time => {}
+                other => break other,
             }
-        }
-        Ok(None)
+        };
+        self.skip_before = None;
+        found
     }
 
     fn feed_next(&mut self) -> io::Result<()> {
@@ -162,8 +172,13 @@ impl VideoStream {
         self.next += 1;
         let t = Instant::now();
         let mut data = vec![0u8; s.size as usize];
-        self.file.seek(SeekFrom::Start(s.offset))?;
-        self.file.read_exact(&mut data)?;
+        let read = match self.pos {
+            Some(pos) => self.file.seek_relative(s.offset as i64 - pos as i64),
+            None => self.file.seek(SeekFrom::Start(s.offset)).map(|_| ()),
+        }
+        .and_then(|()| self.file.read_exact(&mut data));
+        self.pos = read.is_ok().then_some(s.offset + u64::from(s.size));
+        read?;
         self.stats.read += t.elapsed();
 
         let t = Instant::now();
@@ -189,6 +204,9 @@ impl VideoStream {
 
     fn convert(&mut self, pics: Vec<Picture>) {
         for p in pics {
+            if self.skip_before.is_some_and(|before| p.time() + 1e-6 < before) {
+                continue;
+            }
             let t = Instant::now();
             let frame = p.to_frame(self.height);
             self.stats.convert += t.elapsed();
@@ -204,6 +222,13 @@ enum Picture {
 }
 
 impl Picture {
+    fn time(&self) -> f64 {
+        match self {
+            Picture::H264(p) => p.pts as f64 / PTS_PER_SECOND,
+            Picture::Hevc(p) => p.pts as f64 / PTS_PER_SECOND,
+        }
+    }
+
     fn to_frame(&self, track_height: u32) -> Frame {
         match self {
             Picture::H264(p) => {

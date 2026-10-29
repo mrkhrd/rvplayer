@@ -29,6 +29,7 @@ struct GSample {
 struct MovingValue {
     bool gps = false;
     bool gpsGood = false;
+    int gpsIndex = 0, gIndex = 0;  // index of the sample at or before the instant, over the group
     double lat = 0, lon = 0, alt = 0, speed = 0, course = -1, track = 0;
     bool gsensor = false;
     double x = 0, y = 0, z = 0;
@@ -36,8 +37,17 @@ struct MovingValue {
 
 class MovingInfo {
 public:
+    // GM-101 and GM-104: corrections applied while loading.
+    struct Options {
+        bool flipX = false, flipY = false;  // negate longitude / latitude
+        double shiftX = 0, shiftY = 0;      // degrees added afterwards
+        bool speedFromCoordinates = false;  // ignore the recorded speed and bearing
+    };
+
     // Loads the tracks of every file of the group (rv_file_info_json).
-    void load(const Group &group);
+    void load(const Group &group, const Options &options = {});
+    // The whole track of one GPS log or video, uncropped (the GPS converter's TMovingInfo).
+    void loadSource(const QString &path);
     void clear();
     bool hasGps() const;
     bool hasGSensor() const;
@@ -49,11 +59,15 @@ public:
 
     // Track statistics of the whole group (GM-106).
     double trackLength() const;
+    int gpsCount() const;
+    // Wall-clock span of the GPS and G-sensor samples, in days (GetMaxTime - GetMinTime).
+    double span() const;
     // GM-160 step 1 / GM-175: the route as runs of connected points, split at GPS breaks and
     // warned points.
     QVector<QVector<GpsSample>> routeSegments() const;
 
 private:
+    static void deriveSpeedAndBearing(QVector<GpsSample> &gps);
     struct FileTrack {
         QVector<GpsSample> gps;
         QVector<GSample> g;

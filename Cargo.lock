@@ -3986,11 +3986,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rv-edit"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rv-core",
+ "rv-video",
+]
+
+[[package]]
 name = "rv-ffi"
 version = "0.1.0"
 dependencies = [
  "rv-core",
+ "rv-edit",
  "rv-fm",
+ "rv-repair",
  "rv-video",
  "serde_json",
 ]
@@ -4001,6 +4012,14 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "rv-core",
+]
+
+[[package]]
+name = "rv-repair"
+version = "0.1.0"
+dependencies = [
+ "rv-core",
+ "rv-video",
 ]
 
 [[package]]

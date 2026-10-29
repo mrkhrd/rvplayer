@@ -1,11 +1,15 @@
 #include "FileManager.h"
 
+#include "core/Trace.h"
 #include "rv_ffi.h"
 
+#include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+
+#include <cstdio>
 
 namespace {
 
@@ -74,7 +78,9 @@ void FileManager::poll() {
 }
 
 void FileManager::refresh() {
+    RV_TRACE_SCOPE("FileManager::refresh");
     version = rv_fm_version(fm);
+    if (TraceScope::enabled()) std::fprintf(stderr, "fm: version %llu\n", static_cast<unsigned long long>(version));
     const QJsonObject o = takeJson(rv_fm_rows_json(fm)).object();
     FileRows r;
     r.statusKey = o.value("status_key").toString();
@@ -86,6 +92,7 @@ void FileManager::refresh() {
 }
 
 Group FileManager::item(int index) const {
+    RV_TRACE_SCOPE("FileManager::item");
     Group g;
     const QJsonObject o = takeJson(rv_fm_item_json(fm, index)).object();
     if (o.isEmpty()) return g;
@@ -106,6 +113,14 @@ Group FileManager::item(int index) const {
         x.width = f.value("width").toInt();
         x.height = f.value("height").toInt();
         x.gop = f.value("gop").toInt();
+        x.fps = f.value("fps").toDouble();
+        x.size = qint64(f.value("size").toDouble());
+        x.durationMs = qint64(f.value("duration_ms").toDouble());
+        x.fsCreation = f.value("fs_creation").toDouble();
+        x.fsWrite = f.value("fs_write").toDouble();
+        x.infoPath = f.value("info_path").toString();
+        x.gpsState = f.value("gps_state").toInt();
+        x.gpsLogPath = f.value("gps_log_path").toString();
         g.files.append(x);
     }
     return g;
@@ -143,4 +158,21 @@ void FileManager::ungroupAll() {
 void FileManager::groupAuto() {
     rv_fm_group_auto(fm);
     refresh();
+}
+
+QStringList FileManager::logFiles() const {
+    QStringList out;
+    for (const QJsonValue &v : takeJson(rv_fm_log_files_json(fm)).array()) out.append(v.toString());
+    return out;
+}
+
+void FileManager::shiftVideo(int row, double days) {
+    rv_fm_shift_video(fm, row, days);
+    refresh();
+}
+
+bool FileManager::setTrack(int row, const QString &path) {
+    const bool ok = rv_fm_set_track(fm, row, QDir::toNativeSeparators(path).toUtf8().constData()) != 0;
+    refresh();
+    return ok;
 }

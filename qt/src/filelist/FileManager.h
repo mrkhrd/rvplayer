@@ -5,6 +5,7 @@
 #include "core/Group.h"
 
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
 #include <QVector>
 
@@ -54,6 +55,12 @@ public:
     void ungroup(const QList<int> &rows);
     void ungroupAll();
     void groupAuto();
+    // MN-012: the GPS logs found so far.
+    QStringList logFiles() const;
+    // FL-074: moves the files of a row by `days` against their GPS.
+    void shiftVideo(int row, double days);
+    // FL-073: `path` becomes the GPS of a row; false when it holds no GPS data.
+    bool setTrack(int row, const QString &path);
 
 signals:
     void changed();

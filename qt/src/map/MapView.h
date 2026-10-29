@@ -23,6 +23,10 @@ public:
 
     // GM-151: runs a script only when the map is initialised (or `force`), visible and loaded.
     bool exec(const QString &script, bool force = false);
+    // GM-172: a local KML/GPX file made available to the page; returns its URL.
+    static QString serveOverlay(const QString &path);
+    // Loads the page again (after the post-load script changed).
+    void reloadPage();
 
 signals:
     // A callback the page sent: cmd is "loaded", "inited", "view", "bounds" or "routeClick".

@@ -3,11 +3,12 @@
 
 #include "MainForm.h"
 
+#include "core/Playback.h"
 #include "core/Settings.h"
+#include "core/Trace.h"
 #include "i18n/Lang.h"
 #include "vcl/AlignLayout.h"
 #include "vcl/Widgets.h"
-#include "core/Playback.h"
 
 #include <QAction>
 #include <QButtonGroup>
@@ -132,6 +133,7 @@ void MainForm::rebuildGraphs(bool user) {
         for (const char *ev : {"OnMouseDown", "OnMouseMove", "OnMouseUp"}) {
             bindHandler(img, ev, QString(ev).replace("On", "ImageSeek"));
         }
+        bindHandler(img, "OnMouseLeave", "OnImageMouseLeave");
         attachPopup(img, "PopupMenuGraphics");
         img->show();
         graphs.push_back({graphic, img});
@@ -172,6 +174,7 @@ void MainForm::layoutGraphs() {
 }
 
 void MainForm::drawTimeline() {
+    RV_TRACE_SCOPE("MainForm::drawTimeline");
     auto *seekImage = find<vcl::Image>("ImageSeek");
     QWidget *panel = widget("PanelBottomGraphics");
     if (!seekImage || !panel || panel->width() <= 0) return;
@@ -197,6 +200,7 @@ void MainForm::drawTimeline() {
 }
 
 void MainForm::drawCursors() {
+    RV_TRACE_SCOPE("MainForm::drawCursors");
     if (auto *seekImage = find<vcl::Image>("ImageSeek")) seekImage->setImage(seek.draw(position));
     const int x = position < 0 ? -1 : seek.xOf(position);
     for (GraphImage &g : graphs) g.image->setImage(g.graphic.draw(x));

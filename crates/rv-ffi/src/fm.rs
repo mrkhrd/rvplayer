@@ -269,6 +269,30 @@ pub unsafe extern "C" fn rv_fm_group_auto(fm: *mut RvFileManager) {
     unsafe { with_fm(fm, (), FileManager::group_auto) }
 }
 
+/// # Safety
+/// `fm` as for `rv_fm_destroy`. Release the result with `rv_string_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rv_fm_log_files_json(fm: *mut RvFileManager) -> *mut c_char {
+    let v = unsafe { with_fm(fm, Value::Array(Vec::new()), |m| Value::from(m.log_files())) };
+    into_c_string(v.to_string())
+}
+
+/// # Safety
+/// `fm` as for `rv_fm_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rv_fm_shift_video(fm: *mut RvFileManager, index: i32, days: f64) {
+    let Ok(i) = usize::try_from(index) else { return };
+    unsafe { with_fm(fm, (), |m| m.shift_video(i, days)) }
+}
+
+/// # Safety
+/// `fm` as for `rv_fm_destroy`; `path` a valid NUL-terminated UTF-8 string or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rv_fm_set_track(fm: *mut RvFileManager, index: i32, path: *const c_char) -> i32 {
+    let (Ok(i), Some(p)) = (usize::try_from(index), unsafe { path_arg(path) }) else { return 0 };
+    unsafe { with_fm(fm, 0, |m| i32::from(m.set_track(i, &p.to_string_lossy()))) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

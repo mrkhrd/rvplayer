@@ -106,6 +106,22 @@ void Panel::paintEvent(QPaintEvent *e) {
     if (inner != Bevel::None) bevel(rect().adjusted(bevelWidth, bevelWidth, -bevelWidth, -bevelWidth), inner);
 }
 
+void Panel::mousePressEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Panel::mouseReleaseEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Panel::mouseDoubleClickEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Panel::mouseMoveEvent(QMouseEvent *e) {
+    e->accept();
+}
+
 Splitter::Splitter(QWidget *parent) : QWidget(parent) {}
 
 QWidget *Splitter::target() const {
@@ -181,6 +197,23 @@ void Image::paintEvent(QPaintEvent *) {
         const QPoint at = center ? QPoint((width() - s.width()) / 2, (height() - s.height()) / 2) : QPoint(0, 0);
         p.drawPixmap(at, pix);
     }
+}
+
+
+void Image::mousePressEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Image::mouseReleaseEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Image::mouseDoubleClickEvent(QMouseEvent *e) {
+    e->accept();
+}
+
+void Image::mouseMoveEvent(QMouseEvent *e) {
+    e->accept();
 }
 
 }  // namespace vcl

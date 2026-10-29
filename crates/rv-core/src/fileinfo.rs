@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDate, NaiveDateTime, TimeDelta};
 
+use crate::gps::{self, GpsError, LoadOptions};
 use crate::mp4::{self, Movie};
 use crate::rvmi;
 use crate::track::Track;
@@ -24,13 +25,19 @@ pub struct FileInfo {
     pub height: u32,
     pub camera: Option<String>,
     pub track: Track,
+    /// Format of the embedded GPS data ("movRegV" for Registrator Viewer's own track,
+    /// "movNovatek", "movDOD_D", "movNMEA", ...), if the file has any.
+    pub gps_format: Option<String>,
+    /// Why embedded GPS data that was found could not be read (e.g. encrypted blocks).
+    pub gps_error: Option<String>,
     /// Why the file could not be read, if it could not.
     pub error: Option<String>,
 }
 
 impl FileInfo {
-    /// Reads the container structure and any supported GPS track. Never fails: problems are
-    /// reported in `error` so the file still appears in the list.
+    /// Reads the container structure and any supported embedded GPS track (the RVMI track,
+    /// else what [`gps::embedded`] finds). Never fails: problems are reported in `error` so the
+    /// file still appears in the list.
     pub fn load(path: &Path) -> FileInfo {
         Self::load_with_movie(path).0
     }
@@ -57,7 +64,8 @@ impl FileInfo {
 
     fn read(&mut self, path: &Path) -> io::Result<Movie> {
         let file = File::open(path)?;
-        self.size = file.metadata()?.len();
+        let meta = file.metadata()?;
+        self.size = meta.len();
         let mut r = BufReader::new(file);
         let movie = mp4::read_movie(&mut r)?;
         self.duration = movie.duration_secs();
@@ -68,6 +76,17 @@ impl FileInfo {
         }
         if let Some(track) = rvmi::read_track(&mut r, &movie)? {
             self.track = track;
+            self.gps_format = Some("movRegV".to_string());
+        } else {
+            let opts = LoadOptions { tz: gps::local_tz_offset_days(), file_times: gps::file_times(&meta) };
+            match gps::embedded::read_embedded(&mut r, &movie, &path.to_string_lossy(), &opts, true) {
+                Ok(log) => {
+                    self.track = log.track;
+                    self.gps_format = Some(log.format);
+                }
+                Err(GpsError::NoData) => {}
+                Err(e) => self.gps_error = Some(e.to_string()),
+            }
         }
         self.start = self.track.start.or_else(|| creation_time(&movie));
         Ok(movie)

@@ -1,5 +1,7 @@
 #include "VideoView.h"
 
+#include "core/Trace.h"
+
 #include <QPainter>
 
 VideoView::VideoView(QWidget *parent) : QWidget(parent) {
@@ -43,6 +45,7 @@ QRectF VideoView::pictureRect() const {
 }
 
 void VideoView::paintEvent(QPaintEvent *) {
+    RV_TRACE_SCOPE("VideoView::paintEvent");
     QPainter p(this);
     p.fillRect(this->rect(), Qt::black);
     const QRectF r = pictureRect();

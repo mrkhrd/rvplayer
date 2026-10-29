@@ -2,12 +2,19 @@
 
 #include "MainForm.h"
 
+#include "core/Playback.h"
 #include "core/Settings.h"
+#include "core/Trace.h"
 #include "filelist/FileListView.h"
 #include "i18n/Lang.h"
 #include "map/MapView.h"
 
 #include <QAction>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QPlainTextEdit>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
@@ -54,6 +61,7 @@ void MainForm::N_View_GoogleMapsClick(vcl::Event *e) {
 
 // GM-152.
 void MainForm::mapCallback(const QString &cmd, const QHash<QString, QString> &params) {
+    RV_TRACE_SCOPE("MainForm::mapCallback");
     MapView *map = mapView();
     if (!map || !isVisible()) return;
     Settings &s = Settings::instance();
@@ -64,6 +72,8 @@ void MainForm::mapCallback(const QString &cmd, const QHash<QString, QString> &pa
         const int z = s.readInt("gm_Z", lang.trDef("gmStartZoom", "14").toInt());
         const QString layer = s.readString("gm_L").replace('\'', ' ');
         map->exec(QStringLiteral("initialize(%1, %2, %3, '%4')").arg(y, x).arg(z).arg(layer), true);
+        // GM-171: the user's script after the map is set up.
+        if (const QString post = s.readString("mapPostAction"); !post.isEmpty()) map->exec(post, true);
         return;
     }
     if (cmd == "inited") {
@@ -175,6 +185,7 @@ void MainForm::setRoute() {
 
 // GM-161 (whole route): polylines simplified to the map scale, S and F markers.
 void MainForm::redrawRoute() {
+    RV_TRACE_SCOPE("MainForm::redrawRoute");
     MapView *map = mapView();
     if (!map || !map->inited()) return;
     const auto segments = moving.routeSegments();
@@ -201,6 +212,20 @@ void MainForm::redrawRoute() {
         }
         script += QStringLiteral("AddPath([%1], '#FF0000', 0.4);").arg(pts.join(','));
         prevEnd = &seg.last();
+    }
+    // Step 6: a dot at the first point of every time bucket (one at the start even with "Never").
+    const double bucket = isChecked("N_View_TimePoints_1m")    ? 1.0 / 1440
+                          : isChecked("N_View_TimePoints_5m")  ? 5.0 / 1440
+                          : isChecked("N_View_TimePoints_20m") ? 20.0 / 1440
+                                                               : 100.0;
+    qint64 lastBucket = -1;
+    for (const auto &seg : segments) {
+        for (const GpsSample &p : seg) {
+            const qint64 b = qint64(std::floor(p.t / bucket));
+            if (b == lastBucket) continue;
+            lastBucket = b;
+            script += QStringLiteral("AddPathMarker('gm_markerp.png', %1);").arg(pt(p.lat, p.lon));
+        }
     }
     const GpsSample &a = segments.first().first();
     const GpsSample &b = segments.last().last();
@@ -246,3 +271,159 @@ void MainForm::updateMapMarker(const MovingValue &v, bool timerTick) {
     }
 }
 
+
+// GM-168: map markers at the edges of the timeline zoom window (not the A-B selection).
+void MainForm::drawMarkersAB() {
+    MapView *map = mapView();
+    if (!map || !map->inited() || !playback || playback->group().isEmpty()) return;
+    const Group &g = playback->group();
+    const auto segments = moving.routeSegments();
+    const GpsSample *first = segments.isEmpty() ? nullptr : &segments.first().first();
+    const GpsSample *last = segments.isEmpty() ? nullptr : &segments.last().last();
+    auto at = [&](double p, bool want) -> std::optional<MovingValue> {
+        if (!want) return std::nullopt;
+        const MovingValue v = moving.at(g.timeAt(p));
+        if (!v.gps) return std::nullopt;
+        // A point equal to the route's start or finish is dropped (Q-12: both ends compared).
+        for (const GpsSample *end : {first, last}) {
+            if (end && end->lat == v.lat && end->lon == v.lon) return std::nullopt;
+        }
+        return v;
+    };
+    std::optional<MovingValue> a = at(zoomL, zoomL > 0), b = at(zoomR, zoomR < 1);
+    if (!a && !b) {
+        map->exec("ClearMarkersAB();");
+        return;
+    }
+    if (!a) a = b;
+    if (!b) b = a;
+    map->exec(QStringLiteral("SetAB('gm_markera.png', %1, 'gm_markerb.png', %2);").arg(pt(a->lat, a->lon), pt(b->lat, b->lon)));
+}
+
+// GM-172: a KML or GPX overlay on the OpenStreetMap page.
+void MainForm::N_View_Maps_OpenKMLClick(vcl::Event *) {
+    const QString path = QFileDialog::getOpenFileName(
+        this, action("N_View_Maps_OpenKML")->text(), QString(),
+        QStringLiteral("All supported formats (*.kml *.gpx);;KML (*.kml);;GPX (*.gpx);;All files (*.*)"));
+    if (path.isEmpty()) return;
+    if (!isChecked("N_View_OpenStreetMaps2")) {
+        setChecked("N_View_OpenStreetMaps2", true);
+        N_View_GoogleMapsClick(nullptr);
+    }
+    MapView *map = mapView();
+    if (!map) return;
+    const QString url = MapView::serveOverlay(path);
+    const QString call = path.endsWith(".gpx", Qt::CaseInsensitive) ? "AddGPXLayer" : "AddKMLLayer";
+    map->exec(QStringLiteral("%1('%2');").arg(call, url));
+}
+
+// GM-171: a script run after the map page is loaded.
+void MainForm::N_View_Maps_PostActionClick(vcl::Event *) {
+    QDialog dialog(this, Qt::Tool);
+    dialog.setWindowTitle(action("N_View_Maps_PostAction")->text());
+    dialog.resize(400, 300);
+    dialog.setSizeGripEnabled(true);
+    auto *memo = new QPlainTextEdit(&dialog);
+    memo->setFont(QFont("Lucida Console", 9));
+    memo->setLineWrapMode(QPlainTextEdit::NoWrap);
+    memo->setPlainText(Settings::instance().readString("mapPostAction"));
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->addWidget(memo);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return;
+    Settings::instance().writeString("mapPostAction", memo->toPlainText());
+    if (MapView *map = mapView()) map->reloadPage();
+}
+
+// GM-170: zoom around the followed car, or around the point under the mouse.
+bool MainForm::mapWheel(int delta, QPoint global) {
+    MapView *map = mapView();
+    if (!map || !map->inited() || !viewport.valid) return false;
+    const int d = delta / 120;
+    if (d == 0) return true;
+    std::optional<std::pair<double, double>> anchor;  // lat, lon
+    if (mapFollow && lastCar.valid) {
+        anchor = {lastCar.lat, lastCar.lon};
+    } else {
+        const QPoint local = map->mapFromGlobal(global);
+        if (map->rect().contains(local)) {
+            const double lon = viewport.left + double(local.x()) / std::max(1, map->width()) * (viewport.right - viewport.left);
+            const double lat = viewport.top - double(local.y()) / std::max(1, map->height()) * (viewport.top - viewport.bottom);
+            anchor = {lat, lon};
+        }
+    }
+    const QString a = anchor ? pt(anchor->first, anchor->second) : QStringLiteral("null");
+    const double f = std::pow(2.0, -d);
+    const double cLat = anchor ? anchor->first + (viewport.y - anchor->first) * f : viewport.y;
+    const double cLon = anchor ? anchor->second + (viewport.x - anchor->second) * f : viewport.x;
+    map->exec(QStringLiteral("SetMapZoom(%1, %2, %3);").arg(viewport.zoom + d).arg(a, pt(cLat, cLon)));
+    return true;
+}
+
+void MainForm::previewRoutes(const QList<int> &rows, const QSet<int> &highlighted) {
+    if (!fileManager) return;
+    QStringList keys;
+    QList<bool> selected;
+    for (int r : rows) {
+        const Group g = fileManager->item(r);
+        QStringList paths;
+        for (const GroupFile &f : g.files) paths.append(f.path);
+        const QString key = paths.join('|');
+        if (!previewCache.contains(key)) {
+            MovingInfo info;
+            info.load(g, trackOptions());
+            previewCache.insert(key, info.routeSegments());
+        }
+        keys.append(key);
+        selected.append(highlighted.contains(r));
+    }
+    drawPreview(keys, selected);
+}
+
+// GM-191: the GPS converter's files, each read whole.
+void MainForm::previewTrackFiles(const QStringList &paths, const QList<bool> &selected) {
+    QStringList keys;
+    for (const QString &p : paths) {
+        const QString key = "log|" + p;
+        if (!previewCache.contains(key)) {
+            MovingInfo info;
+            info.loadSource(p);
+            previewCache.insert(key, info.routeSegments());
+        }
+        keys.append(key);
+    }
+    drawPreview(keys, selected);
+}
+
+// The cached routes of `keys` in red, selected ones in magenta, the map fitted around them.
+void MainForm::drawPreview(const QStringList &keys, const QList<bool> &selected) {
+    MapView *map = mapView();
+    if (!map || !map->inited()) return;
+    QString script = QStringLiteral("ClearPath();ClearMarkers();ClearMarkersAB();");
+    double s = 90, w = 180, n = -90, e = -180;
+    bool any = false;
+    for (int k = 0; k < keys.size(); ++k) {
+        const QString colour = selected.value(k) ? QStringLiteral("#FF00FF") : QStringLiteral("#FF0000");
+        for (const auto &seg : previewCache.value(keys[k])) {
+            QStringList pts;
+            // Every few metres is enough for an overview.
+            const GpsSample *kept = nullptr;
+            for (const GpsSample &p : seg) {
+                if (kept && distanceMetres(kept->lat, kept->lon, p.lat, p.lon) < 10 && &p != &seg.last()) continue;
+                pts.append(pt(p.lat, p.lon));
+                kept = &p;
+                s = std::min(s, p.lat);
+                n = std::max(n, p.lat);
+                w = std::min(w, p.lon);
+                e = std::max(e, p.lon);
+                any = true;
+            }
+            script += QStringLiteral("AddPath([%1], '%2', 0.4);").arg(pts.join(','), colour);
+        }
+    }
+    if (any) script += QStringLiteral("SetMapBounds(%1, %2);").arg(pt(s, w), pt(n, e));
+    lastRouteScript.clear();
+    map->exec(script);
+}

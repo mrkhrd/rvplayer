@@ -12,7 +12,9 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 rv-core.workspace = true
 rv-video.workspace = true
+rv-edit.workspace = true
 rv-fm.workspace = true
+rv-repair.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

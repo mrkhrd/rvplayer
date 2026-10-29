@@ -15,6 +15,7 @@
 class QAction;
 class QMenu;
 class QMenuBar;
+class QEventLoop;
 class QTimer;
 
 namespace vcl {
@@ -40,6 +41,12 @@ public:
     const DfmObject *definition(const QString &name) const;
     AlignLayout *layoutOf(const QWidget *container) const;
     QStringList unimplementedHandlers() const { return missing; }
+
+    // TForm.ShowModal / ModalResult: shows the window application-modal and returns the result
+    // set by setModalResult (0 when it was simply closed).
+    int showModal();
+    void setModalResult(int result);
+    enum ModalResult { mrNone = 0, mrOk = 1, mrCancel = 2, mrYes = 6, mrNo = 7 };
 
     // VCL TMenuItem.Checked semantics: never toggled by a click itself; setting a RadioItem
     // unchecks the RadioItems with the same GroupIndex under the same parent.
@@ -93,6 +100,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *ev) override;
 
 private:
+    class KeyPreview;
     void build(const DfmObject &def, QWidget *parent);
     QWidget *createDefault(const DfmObject &def, QWidget *parent);
     void place(QWidget *w, const DfmObject &def, QWidget *parent);
@@ -124,6 +132,8 @@ private:
     QMenuBar *menuBar = nullptr;
     QStringList missing;
     bool keyPreview = false;
+    int modalResult = 0;
+    QEventLoop *modalLoop = nullptr;
     bool created = false;
 };
 

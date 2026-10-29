@@ -3,9 +3,14 @@
 
 #include "MainForm.h"
 
+#include "core/Format.h"
 #include "core/Playback.h"
 #include "core/Settings.h"
+#include "core/Trace.h"
 #include "filelist/FileListView.h"
+#include "forms/FormCopy.h"
+#include "forms/FormFileProperty.h"
+#include "forms/FormGroup.h"
 #include "i18n/Lang.h"
 #include "vcl/AlignLayout.h"
 #include "vcl/Widgets.h"
@@ -229,6 +234,7 @@ void MainForm::createFileManager(bool autoSearch) {
 
 // FL-012.
 void MainForm::onFileManagerChanges() {
+    RV_TRACE_SCOPE("MainForm::onFileManagerChanges");
     FileListView *list = listView();
     if (!list || !fileManager) return;
     const QList<int> before = list->selectedRows();
@@ -349,6 +355,7 @@ bool MainForm::isNowPlaying(int row) const {
 
 // FL-031 / PV-010.
 void MainForm::ListViewSelectItem(vcl::Event *) {
+    RV_TRACE_SCOPE("MainForm::ListViewSelectItem");
     FileListView *list = listView();
     if (!list || !fileManager) return;
     const QList<int> selected = list->selectedRows();
@@ -386,6 +393,7 @@ void MainForm::ListViewSelectItem(vcl::Event *) {
 
 // FL-032 / PV-011.
 void MainForm::ListViewClick(vcl::Event *) {
+    RV_TRACE_SCOPE("MainForm::ListViewClick");
     const Qt::KeyboardModifiers mods = QApplication::keyboardModifiers();
     auto *play = find<QToolButton>("ButtonPlay");
     if (mods & (Qt::ControlModifier | Qt::ShiftModifier)) {
@@ -400,6 +408,7 @@ void MainForm::ListViewClick(vcl::Event *) {
 
 // FL-035 / PV-012.
 void MainForm::ListViewDblClick(vcl::Event *) {
+    RV_TRACE_SCOPE("MainForm::ListViewDblClick");
     auto *play = find<QToolButton>("ButtonPlay");
     if (!play) return;
     if (!play->isEnabled()) {
@@ -483,4 +492,63 @@ void MainForm::N_FileList_ShowExplorerClick(vcl::Event *) {
     const Group g = fileManager->item(rows.first());
     if (g.isEmpty()) return;
     QProcess::startDetached("explorer.exe", {"/select,", QDir::toNativeSeparators(g.files.first().path)});
+}
+
+// FL-060: one Property window per selected row.
+void MainForm::N_FileList_PropertyClick(vcl::Event *) {
+    FileListView *list = listView();
+    if (!list || !fileManager) return;
+    const FileRows &rows = list->listModel()->fileRows();
+    for (int r : list->selectedRows()) {
+        if (r >= rows.rows.size()) continue;
+        const FileRow &row = rows.rows[r];
+        auto *w = new FormFileProperty;
+        if (!w->load(":/original/forms/TFORMFILEPROPERTY.dfm")) {
+            delete w;
+            return;
+        }
+        w->popup(row, fileManager->item(r), fmt::duration(row.durationMs, row.durationState), tzShift,
+                 isChecked("N_View_Measu_British"));
+    }
+}
+
+// FL-055: the Grouping dialog joins the ticked rows into one item.
+void MainForm::N_FileList_Group_WithClick(vcl::Event *) {
+    FileListView *list = listView();
+    if (!list || !fileManager) return;
+    FormGroup dialog(this);
+    if (!dialog.load(":/original/forms/TFORMGROUP.dfm")) return;
+    dialog.setRows(list);
+    dialog.move(geometry().topLeft() + QPoint(10, 50));
+    connect(&dialog, &FormGroup::previewRoutes, this, &MainForm::previewRoutes);
+    const int result = dialog.showModal();
+    const QList<int> rows = dialog.tickedRows();
+    previewCache.clear();
+    if (result == vcl::Form::mrOk && !rows.isEmpty()) {
+        stopPlayback(false);
+        lastSelectedName.clear();
+        fileManager->group(rows);
+    }
+    clearListSelection();
+    setRoute();  // the map shows the current item again
+}
+
+// FL-061: the files of all selected rows (videos, GPS files, GPS logs) to one folder.
+void MainForm::N_FileList_CopyClick(vcl::Event *) {
+    FileListView *list = listView();
+    if (!list || !fileManager) return;
+    QStringList files;
+    QString name;
+    for (int r : list->selectedRows()) {
+        const Group g = fileManager->item(r);
+        if (name.isEmpty()) name = g.name;
+        for (const GroupFile &f : g.files) {
+            for (const QString &path : {f.path, f.infoPath, f.gpsLogPath}) {
+                if (!path.isEmpty() && !files.contains(path)) files.append(path);
+            }
+        }
+    }
+    if (files.isEmpty()) return;
+    auto *w = new FormCopy;
+    if (!w->load(":/original/forms/TFORMCOPY.dfm") || !w->popup(files, name)) delete w;
 }

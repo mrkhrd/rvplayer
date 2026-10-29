@@ -6,7 +6,7 @@
 //! | tag    | payload                                                               |
 //! |--------|-----------------------------------------------------------------------|
 //! | `tReV` | f64 start time as Delphi `TDateTime` (days since 1899-12-30)           |
-//! | `gReV` | i32 lon×1e6, i32 lat×1e6, i32 altitude, u16 speed×10 km/h, u8 course/2, u8 warning |
+//! | `gReV` | i32 lon×1e6, i32 lat×1e6, f32 altitude m, u16 speed×10 km/h, u8 course/2, u8 warning |
 //! | `sReV` | i16 x, i16 y, i16 z in 1/1000 g                                        |
 //!
 //! A record's time is the start time plus the sample's presentation time.
@@ -58,8 +58,8 @@ pub fn decode_record(rec: &[u8], time: f64, track: &mut Track) {
             }
         }
         b"gReV" => {
-            let (Some(x), Some(y), Some(h), Some(tail)) =
-                (i32_at(0), i32_at(4), i32_at(8), payload.get(12..16))
+            let h = payload.get(8..12).map(|b| f32::from_le_bytes(b.try_into().unwrap()));
+            let (Some(x), Some(y), Some(h), Some(tail)) = (i32_at(0), i32_at(4), h, payload.get(12..16))
             else {
                 return;
             };
@@ -70,7 +70,7 @@ pub fn decode_record(rec: &[u8], time: f64, track: &mut Track) {
                 time,
                 lat: f64::from(y) / 1e6,
                 lon: f64::from(x) / 1e6,
-                altitude: f64::from(h),
+                altitude: if h.is_finite() { f64::from(h) } else { 0.0 },
                 speed_kmh: f64::from(u16::from_le_bytes([tail[0], tail[1]])) / 10.0,
                 course: f64::from(tail[2]) * 2.0,
                 warning: tail[3],
@@ -109,9 +109,10 @@ mod tests {
 
     fn g_rev(lon: i32, lat: i32, speed10: u16, course_half: u8) -> Vec<u8> {
         let mut v = b"gReV".to_vec();
-        for w in [lon, lat, 0] {
+        for w in [lon, lat] {
             v.extend_from_slice(&w.to_le_bytes());
         }
+        v.extend_from_slice(&12.5f32.to_le_bytes());
         v.extend_from_slice(&speed10.to_le_bytes());
         v.extend_from_slice(&[course_half, 0, 0x0c]);
         v
@@ -144,8 +145,8 @@ mod tests {
         assert_eq!(track.gps.len(), 1, "zero-coordinate placeholder is skipped");
         let p = track.gps[0];
         assert_eq!(
-            (p.lat, p.lon, p.speed_kmh, p.course, p.time),
-            (60.063627, 30.327022, 70.1, 112.0, 2.0)
+            (p.lat, p.lon, p.speed_kmh, p.course, p.time, p.altitude),
+            (60.063627, 30.327022, 70.1, 112.0, 2.0, 12.5)
         );
         assert_eq!(track.gsensor[0].z, 0.98);
     }

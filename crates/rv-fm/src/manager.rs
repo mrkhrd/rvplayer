@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use rv_core::{FileInfo, Track, rvmi};
 
 use crate::gps::{
-    DefaultGpsLoader, GpsLoader, crop, extension_rank, extract_gps_info, extract_gps_time, has_gps_extension,
+    DefaultGpsLoader, GpsLoader, TrackStats, crop, extension_rank, extract_gps_info, extract_gps_time, has_gps_extension,
     has_scan_video_extension, intersection, match_face, track_stats,
 };
 use crate::grouping::{find_groups_auto, find_groups_fast, group_items, sync_video_by_gps, ungroup_all, ungroup_item};
@@ -472,6 +472,61 @@ impl FileManager {
         st.sort();
         self.shared.bump();
     }
+
+    /// MN-012 (`GetLogFiles`): the GPS logs found so far.
+    pub fn log_files(&self) -> Vec<String> {
+        self.shared.lock().pool.iter().map(|l| l.path.clone()).collect()
+    }
+
+    /// FL-074 (`ShiftVideo`): moves every file of an item by `dt` days against its GPS.
+    pub fn shift_video(&self, index: usize, dt: f64) {
+        let mut st = self.shared.lock();
+        let Some(it) = st.items.get_mut(index) else { return };
+        for f in &mut it.files {
+            f.video.time.finish += dt;
+        }
+        calculate_group(it);
+        self.shared.bump();
+    }
+
+    /// FL-073 (`SetTrack`): a GPS log (or a video's GPS) becomes the GPS info of every file of
+    /// an item. When the durations or ends suggest the same trip, the videos are first moved so
+    /// that they end with the track. False when the file has no GPS or G-sensor data.
+    pub fn set_track(&self, index: usize, path: &str) -> bool {
+        let Some(loaded) = self.shared.loader.load_with_format(Path::new(path)) else { return false };
+        let stats = stats_with_format(&loaded);
+        if stats.gps_points == 0 && stats.gsensor_points == 0 {
+            return false;
+        }
+        let mut track_info = GpsInfo::default();
+        extract_gps_time(&mut track_info, &stats);
+        let (min, max) = (stats.min_time, stats.max_time);
+        let mut st = self.shared.lock();
+        let Some(it) = st.items.get_mut(index) else { return false };
+        let (d_item, finish) = (it.group.video.time.duration, it.group.video.time.finish);
+        let d_track = max - min;
+        let near = 11.0 * SEC;
+        let aligned = (d_item - d_track).abs() < near
+            || ((d_item / (d_track + d_item) - 0.5).abs() < 0.01 && (d_track + d_item) / 20.0 < (finish - max).abs())
+            || finish <= min + near
+            || max <= finish - d_item + near;
+        if aligned {
+            for f in &mut it.files {
+                f.video.time.finish += max - finish;
+            }
+        }
+        for f in &mut it.files {
+            f.info = GpsInfo::default();
+            f.info.set_path(path);
+            let part = crop(&loaded.0, f.video.time.start(), f.video.time.finish);
+            extract_gps_info(&mut f.info, &TrackStats { format_id: stats.format_id.clone(), ..track_stats(&part) });
+            f.info.time = track_info.time.clone();
+            f.info.previewed = true;
+        }
+        calculate_group(it);
+        self.shared.bump();
+        true
+    }
 }
 
 impl Drop for FileManager {
@@ -512,8 +567,8 @@ struct VideoPreview {
     gop: u32,
     h264: bool,
     aac: bool,
-    /// The embedded GPS track, when GPS is allowed and the file has one.
-    track: Option<Track>,
+    /// The embedded GPS track and its format id, when GPS is allowed and the file has one.
+    track: Option<(Track, String)>,
 }
 
 fn preview_video(path: &str, gps: bool) -> VideoPreview {
@@ -543,7 +598,7 @@ fn preview_video(path: &str, gps: bool) -> VideoPreview {
         .get(1)
         .is_some_and(|t| &t.handler == b"soun" && t.codec.eq_ignore_ascii_case(b"mp4a"));
     if gps && (movie.track_by_codec(&rvmi::CODEC).is_some() || !info.track.is_empty()) {
-        r.track = Some(info.track);
+        r.track = Some((info.track, info.gps_format.unwrap_or_default()));
     }
     r
 }
@@ -580,7 +635,7 @@ struct Worker {
     shared: Arc<Shared>,
     cache: DirCache,
     /// Embedded tracks read during video preview, used by the info preview of the same file.
-    embedded: HashMap<u64, Track>,
+    embedded: HashMap<u64, (Track, String)>,
     last_notify: Instant,
 }
 
@@ -633,8 +688,8 @@ impl Worker {
                     self.apply_video(id, r);
                 }
                 Task::Log { path } => {
-                    let track = shared.loader.load(Path::new(&path));
-                    apply_log(&shared, &path, track);
+                    let loaded = shared.loader.load_with_format(Path::new(&path));
+                    apply_log(&shared, &path, loaded);
                 }
                 Task::Info { id, video_path, info_path } => self.preview_info(id, &video_path, &info_path),
             }
@@ -839,9 +894,9 @@ impl Worker {
         let embedded = self.embedded.remove(&id);
         let loaded = candidates.into_iter().next().map(|path| {
             let track = if path.to_lowercase() == video_path.to_lowercase() {
-                embedded.or_else(|| shared.loader.load(Path::new(&path)))
+                embedded.or_else(|| shared.loader.load_with_format(Path::new(&path)))
             } else {
-                shared.loader.load(Path::new(&path))
+                shared.loader.load_with_format(Path::new(&path))
             };
             let fs = fs::metadata(&path).ok().map(|m| {
                 let (c, w) = fs_times(&m);
@@ -854,7 +909,7 @@ impl Worker {
         let Some((i, k)) = st.find_id(id) else { return };
         if let Some((path, track, fs)) = loaded {
             let lower = path.to_lowercase();
-            let stats = track.as_ref().map(track_stats);
+            let stats = track.as_ref().map(stats_with_format);
             let enough = stats.as_ref().is_some_and(|s| s.gps_points >= 2 || s.gsensor_points >= 2);
             // A shared trip log that does not overlap this video is left to the log matching.
             let shared_trip_log = enough && {
@@ -909,12 +964,18 @@ impl Worker {
     }
 }
 
+/// Track statistics with the format id of the data.
+fn stats_with_format((track, format): &(Track, String)) -> TrackStats {
+    TrackStats { format_id: format.clone(), ..track_stats(track) }
+}
+
 /// §4.4.2: a pool log was loaded; record its span and assign it to overlapping videos.
-fn apply_log(shared: &Shared, path: &str, track: Option<Track>) {
+fn apply_log(shared: &Shared, path: &str, loaded: Option<(Track, String)>) {
     let lower = path.to_lowercase();
     let mut st = shared.lock();
     let Some(pi) = st.pool.iter().position(|l| l.path_lower == lower) else { return };
-    let stats = track.as_ref().map(track_stats);
+    let stats = loaded.as_ref().map(stats_with_format);
+    let track = loaded.map(|(t, _)| t);
     {
         let log = &mut st.pool[pi];
         if let Some(s) = &stats {
