@@ -12,6 +12,7 @@
 namespace {
 
 const char *const kProjectUrl = "https://github.com/mrkhrd/rvplayer";
+const QColor kLinkColour(0, 102, 204);
 
 }  // namespace
 
@@ -45,8 +46,17 @@ void FormAbout::FormCreate(vcl::Event *) {
             l->setVisible(!text.isEmpty());
         }
     };
+    // The project page on GitHub, as a link (blue, underlined, a hand over it).
     set("LabelSite", QString::fromLatin1(kProjectUrl).mid(8));  // without "https://"
-    if (QWidget *site = find<QWidget>("LabelSite")) site->setToolTip(QString::fromLatin1(kProjectUrl));
+    if (auto *site = find<QLabel>("LabelSite")) {
+        site->setToolTip(QString::fromLatin1(kProjectUrl));
+        QFont f = site->font();
+        f.setUnderline(true);
+        site->setFont(f);
+        QPalette p = site->palette();
+        p.setColor(QPalette::WindowText, kLinkColour);
+        site->setPalette(p);
+    }
     // The original program and its author (the translation files' own entries).
     if (vcl::AlignLayout *l = layoutOf(this)) {
         auto *original = new QLabel(ru ? QStringLiteral("На основе Registrator Viewer") : QStringLiteral("Based on Registrator Viewer"), this);
@@ -91,7 +101,7 @@ void FormAbout::LabelSiteClick(vcl::Event *) {
     QDesktopServices::openUrl(QUrl(QString::fromLatin1(kProjectUrl)));
 }
 
-// SF-ABOUT-005: blue while hovered.
+// SF-ABOUT-005: blue while hovered; the project link stays a link.
 void FormAbout::LabelMailMouseEnter(vcl::Event *e) {
     if (auto *l = e ? qobject_cast<QLabel *>(e->sender) : nullptr) {
         QPalette p = l->palette();
@@ -103,7 +113,7 @@ void FormAbout::LabelMailMouseEnter(vcl::Event *e) {
 void FormAbout::LabelMailMouseLeave(vcl::Event *e) {
     if (auto *l = e ? qobject_cast<QLabel *>(e->sender) : nullptr) {
         QPalette p = l->palette();
-        p.setColor(QPalette::WindowText, Qt::black);
+        p.setColor(QPalette::WindowText, l->objectName() == "LabelSite" ? kLinkColour : QColor(Qt::black));
         l->setPalette(p);
     }
 }

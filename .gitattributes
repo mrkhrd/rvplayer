@@ -1,0 +1,3 @@
+# Batch files need CRLF: cmd.exe misreads labels (goto, call :label) in LF files.
+*.cmd text eol=crlf
+*.bat text eol=crlf
