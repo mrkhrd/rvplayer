@@ -3,7 +3,8 @@ rem Builds one self-contained program file, dist\RVPlayer.exe, packed with UPX: 
 rem Rust core and the MSVC runtime are all linked in. The first run builds a static Qt (the base
 rem module) into deps\qt-static and MapLibre against it into deps\maplibre-static; later runs
 rem reuse them. Downloads are pinned and checked against their published checksums.
-rem   single.cmd deps   only the static Qt and MapLibre (for caching them, see .github/workflows)
+rem   single.cmd qt     only the static Qt; single.cmd deps: the static Qt and MapLibre
+rem                     (stages cached on their own, see .github/workflows)
 setlocal
 set QTMINOR=6.10
 set QTVER=6.10.3
@@ -38,6 +39,7 @@ cmake --install . || (popd & exit /b 1)
 popd
 rmdir /s /q "%DEPS%\qt-static-build"
 :qtdone
+if /i "%~1"=="qt" exit /b 0
 
 rem 2. MapLibre against it.
 if not exist "%DEPS%\maplibre-static\lib\cmake\QMapLibre\QMapLibreConfig.cmake" (
