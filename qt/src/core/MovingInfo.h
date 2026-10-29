@@ -65,6 +65,10 @@ public:
     // GM-160 step 1 / GM-175: the route as runs of connected points, split at GPS breaks and
     // warned points.
     QVector<QVector<GpsSample>> routeSegments() const;
+    // GetNearestPlace (GM-152 routeClick): the time of the GPS point nearest to (lat, lon) if it is
+    // nearer than minD (squared degrees, then lowered to it), moved 0.5 s inside its run at the ends
+    // and at gaps; -1 when no point is nearer.
+    TDateTime nearestPlace(double lat, double lon, double &minD) const;
 
 private:
     static void deriveSpeedAndBearing(QVector<GpsSample> &gps);

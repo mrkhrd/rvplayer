@@ -122,7 +122,6 @@ void MainForm::N_View_Arrow_SmallClick(vcl::Event *e) {
 
 void MainForm::N_View_TimePoints_1mClick(vcl::Event *e) {
     if (auto *a = e ? qobject_cast<QAction *>(e->sender) : nullptr) menuItemClick(a);
-    lastRouteScript.clear();
     redrawRoute();
 }
 

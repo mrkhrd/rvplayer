@@ -26,6 +26,7 @@
 #include "forms/FormSetupSubtitleTemplate.h"
 #include "forms/MainForm.h"
 #include "i18n/Lang.h"
+#include "map/MapView.h"
 #include "rv_ffi.h"
 #include "video/VideoView.h"
 
@@ -46,6 +47,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
+#include <QOpenGLWidget>
+#include <QToolButton>
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QMessageBox>
@@ -57,6 +60,8 @@
 #include <QTreeWidget>
 #include <QTest>
 #include <QWheelEvent>
+
+#include <QMapLibre/Map>
 
 #include <functional>
 
@@ -128,6 +133,9 @@ private slots:
     void snapshotJpegCarriesExif();
     void coordinateTemplateFillsValues();
     void flipXNegatesLongitude();
+    void routeClickSeeksToThePoint();
+    void mapShowsRouteOnAnyLayer();
+    void mapRulerMeasures();
     void groupWithJoinsTickedRows();
     void copyCopiesFilesWithTimes();
     void cuttingListsTheSelection();
@@ -149,6 +157,13 @@ private:
     }
     void clickRow(int row) { QTest::mouseClick(list()->viewport(), Qt::LeftButton, {}, rowCenter(row)); }
     void stop() { form->ButtonStopClick(nullptr); }
+    // The map, shown and with its style loaded.
+    MapView *mapReady() {
+        if (!form->isChecked("N_View_OpenStreetMaps2")) form->action("N_View_OpenStreetMaps2")->trigger();
+        MapView *map = form->mapView();
+        if (!map || !QTest::qWaitFor([&] { return map->isVisible() && map->isReady(); }, 10000)) return nullptr;
+        return map;
+    }
 
     QString data;
     MainForm *form = nullptr;
@@ -156,13 +171,17 @@ private:
 
 void MainFormTest::initTestCase() {
     if (data.isEmpty()) QSKIP("no sample recordings (share not reachable and RV_TEST_DIR not set)");
+    // A raster base layer: its style is local, so the map is ready without the network.
+    Settings::instance().writeString("gm_L", "OpenStreetMap");
     form = new MainForm;
     QVERIFY2(form->load(":/original/forms/TFORMMAIN.dfm"), qPrintable(form->loadError()));
     form->showMaximized();
     QVERIFY(QTest::qWaitForWindowExposed(form));
     form->activateWindow();
     // FL-001: the folder on the command line is listed and its first row plays.
-    QTRY_VERIFY_WITH_TIMEOUT(list()->listModel()->rowCount() >= 3 && !list()->listModel()->hasStatus(), 20000);
+    // A folder of one's own (RV_TEST_DIR) may hold a single group; the samples are three rows.
+    const int rows = qEnvironmentVariableIsSet("RV_TEST_DIR") ? 1 : 3;
+    QTRY_VERIFY_WITH_TIMEOUT(list()->listModel()->rowCount() >= rows && !list()->listModel()->hasStatus(), 20000);
 }
 
 void MainFormTest::startupPlaysFirstRow() {
@@ -289,6 +308,10 @@ void MainFormTest::wheelOverGraphsZoomsTimeline() {
     const QPoint local(seekImage->width() / 2, seekImage->height() / 2);
     const QPoint global = seekImage->mapToGlobal(local);
     QCursor::setPos(global);
+    // The wheel goes to the widget under the pointer: nothing else may be on top there.
+    form->raise();
+    form->activateWindow();
+    QTRY_COMPARE(QApplication::widgetAt(global), seekImage);
     QWheelEvent wheel(QPointF(local), QPointF(global), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
                       Qt::NoScrollPhase, false);
     QApplication::sendEvent(seekImage, &wheel);
@@ -328,6 +351,11 @@ void MainFormTest::propertyWindowShowsTheRow() {
     bool hasFile = false;
     for (int r = 0; r < g->rowCount(); ++r) hasFile |= g->item(r, 1) && g->item(r, 1)->text().endsWith(".MOV", Qt::CaseInsensitive) | g->item(r, 1)->text().endsWith(".MP4", Qt::CaseInsensitive);
     QVERIFY2(hasFile, "no File row");
+    // SF-FILEPROPERTY-002: the values take the rest of the width as soon as the window opens.
+    QTRY_VERIFY2(g->columnWidth(0) + g->columnWidth(1) >= g->viewport()->width() - 1,
+                 qPrintable(QStringLiteral("%1 + %2 < %3").arg(g->columnWidth(0)).arg(g->columnWidth(1)).arg(g->viewport()->width())));
+    QVERIFY(g->columnWidth(1) > g->columnWidth(0));
+    shot(w, "property-default");
     w->resize(560, 520);
     shot(w, "property");
     shot(form, "main");
@@ -426,6 +454,95 @@ void MainFormTest::flipXNegatesLongitude() {
     QTRY_COMPARE(form->moving.at(form->playback->group().timeAt(0.5)).lon, -lon);
     form->action("N_View_Coord_FlipX")->trigger();
     QTRY_COMPARE(form->moving.at(form->playback->group().timeAt(0.5)).lon, lon);
+}
+
+// GM-152 routeClick: a click on the route seeks to the nearest point; one far from it does not.
+void MainFormTest::routeClickSeeksToThePoint() {
+    clickRow(0);
+    QTRY_VERIFY(form->moving.hasGps());
+    MapView *map = mapReady();
+    QVERIFY(map);
+    const auto segments = form->moving.routeSegments();
+    QVERIFY(!segments.isEmpty() && segments.first().size() >= 3);
+    const GpsSample p = segments.first()[segments.first().size() / 2];
+    // About 2 m per pixel: 10 pixels are about 20 m.
+    map->engine()->setCoordinateZoom({p.lat, p.lon}, 16);
+    QTRY_VERIFY(form->viewport.valid && std::abs(form->viewport.y - p.lat) < 1e-5);
+    QWidget *canvas = map->findChild<QOpenGLWidget *>();
+    const Group &g = form->playback->group();
+    form->seekTo(0, true);
+    QTest::mouseClick(canvas, Qt::LeftButton, {}, (map->pixelFor({p.lat, p.lon}) + QPointF(3, 2)).toPoint());
+    QVERIFY(form->lastPosition > 0);
+    const double seconds = std::abs(form->lastPosition - g.progressAt(p.t)) * g.duration * 86400;
+    QVERIFY2(seconds < 1.2, qPrintable(QString::number(seconds)));  // the point or a neighbour
+    form->seekTo(0, true);
+    QTest::mouseClick(canvas, Qt::LeftButton, {}, QPoint(4, canvas->height() - 4));
+    QCOMPARE(form->lastPosition, 0.0);
+}
+
+// GM-161: the opened row's route is on the map, fitted; another base layer keeps it.
+void MainFormTest::mapShowsRouteOnAnyLayer() {
+    clickRow(0);
+    QTRY_VERIFY(form->moving.hasGps());
+    MapView *map = mapReady();
+    QVERIFY(map);
+    form->setRoute();
+    const auto segments = form->moving.routeSegments();
+    // Every point inside the view the map reports once it has moved (edge points within 1e-6°).
+    const auto fitted = [&] {
+        const auto &v = form->viewport;
+        for (const auto &seg : segments) {
+            for (const GpsSample &p : seg) {
+                if (p.lat > v.top + 1e-6 || p.lat < v.bottom - 1e-6 || p.lon < v.left - 1e-6 || p.lon > v.right + 1e-6) return false;
+            }
+        }
+        return v.valid;
+    };
+    QTRY_VERIFY(fitted());
+    QVERIFY(map->engine()->layerExists("rv-route"));
+    if (qEnvironmentVariableIsSet("RV_TEST_SHOTS")) {
+        QTest::qWaitFor([&] { return map->engine()->isFullyLoaded(); }, 5000);  // a grab mid-update is torn
+        shot(map, "map");
+    }
+    auto *layers = map->findChild<QToolButton *>("layerButton");
+    QVERIFY(layers && layers->menu());
+    QAction *satellite = nullptr;
+    for (QAction *a : layers->menu()->actions()) {
+        if (a->text() == "Satellite (Esri)") satellite = a;
+    }
+    QVERIFY(satellite);
+    satellite->trigger();
+    QCOMPARE(map->layer(), QString("Satellite (Esri)"));
+    QCOMPARE(Settings::instance().readString("gm_L"), QString("Satellite (Esri)"));
+    QTRY_VERIFY(map->engine()->layerExists("rv-route") && map->engine()->layerExists("base0"));
+    map->setLayer("OpenStreetMap");
+    Settings::instance().writeString("gm_L", "OpenStreetMap");
+    QTRY_VERIFY(map->engine()->layerExists("rv-route"));
+}
+
+// GM-153 distance tool: the ruler adds a vertex per click and sums the legs; the cross clears.
+void MainFormTest::mapRulerMeasures() {
+    MapView *map = mapReady();
+    QVERIFY(map);
+    QWidget *canvas = map->findChild<QOpenGLWidget *>();
+    auto *ruler = map->findChild<QToolButton *>("rulerButton");
+    auto *text = map->findChild<QLabel *>("rulerText");
+    QVERIFY(ruler && text);
+    ruler->click();
+    QVERIFY(text->isVisible());
+    const QPoint a(canvas->width() / 3, canvas->height() / 2), b(2 * canvas->width() / 3, canvas->height() / 2);
+    const qreal before = form->lastPosition;
+    QTest::mouseClick(canvas, Qt::LeftButton, {}, a);
+    QTest::mouseClick(canvas, Qt::LeftButton, {}, b);
+    QCOMPARE(form->lastPosition, before);  // measuring does not seek
+    const double expected = form->viewport.metresPerPixel * (b.x() - a.x());
+    QVERIFY2(std::abs(map->rulerMetres() - expected) < expected * 0.02,
+             qPrintable(QStringLiteral("%1 vs %2").arg(map->rulerMetres()).arg(expected)));
+    QVERIFY(text->text().endsWith(" m") || text->text().endsWith(" km"));
+    map->findChild<QToolButton *>("rulerClear")->click();
+    QCOMPARE(map->rulerMetres(), 0.0);
+    ruler->click();
+    QVERIFY(!text->isVisible());
 }
 
 // FL-055: ticking two rows in the Grouping dialog and pressing Group makes them one item.

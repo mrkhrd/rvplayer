@@ -242,9 +242,11 @@ private:
 
     // --- Map (MainForm_Map.cpp) ---
     MapView *mapView() const;
-    int mapProvider() const;  // GM-150 provider code of the checked item
     void setupMapMenu();
-    void mapCallback(const QString &cmd, const QHash<QString, QString> &params);
+    // GM-152: the map's notifications.
+    void mapLoaded();
+    void mapViewChanged(bool finished);
+    void mapClicked(double lat, double lon);
     void setRoute();     // GM-160
     void redrawRoute();  // GM-161
     void updateMapMarker(const MovingValue &v, bool timerTick);  // GM-165, GM-167
@@ -265,7 +267,6 @@ private:
     } viewport;
     bool mapFollow = true;    // the car is followed while it stays in view
     bool mapRecentre = true;  // gmArrowInCenter: centre on the next tick (after a seek)
-    QString lastRouteScript;
     struct {
         bool valid = false;
         double lat = 0, lon = 0;

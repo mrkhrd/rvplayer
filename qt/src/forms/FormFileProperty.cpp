@@ -55,17 +55,27 @@ void FormFileProperty::FormCreate(vcl::Event *) {
         g->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         g->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         g->setWordWrap(false);
+        g->viewport()->installEventFilter(this);
     }
     if (auto *copy = find<QWidget>("ButtonCopy")) {
         static_cast<QAbstractButton *>(copy)->setText(Lang::instance().tr("Property_CopyAll"));
     }
 }
 
-// SF-FILEPROPERTY-002.
+// SF-FILEPROPERTY-002. Also on the grid's own resize: the form's comes before the layout has
+// sized the grid, and the scroll bar comes and goes.
 void FormFileProperty::FormResize(vcl::Event *) {
     if (QTableWidget *g = grid()) {
         g->setColumnWidth(1, std::max(10, g->viewport()->width() - 1 - g->columnWidth(0)));
     }
+}
+
+bool FormFileProperty::eventFilter(QObject *watched, QEvent *ev) {
+    // Queued: the scroll bar's layout may still change the width without another resize event.
+    if (ev->type() == QEvent::Resize && grid() && watched == grid()->viewport()) {
+        QMetaObject::invokeMethod(this, [this] { FormResize(nullptr); }, Qt::QueuedConnection);
+    }
+    return vcl::Form::eventFilter(watched, ev);
 }
 
 void FormFileProperty::FormClose(vcl::Event *) {}
@@ -111,18 +121,19 @@ void FormFileProperty::addStartFinish(TDateTime start, TDateTime finish, int dur
     }
 }
 
-// SF-FILEPROPERTY-006/007.
+// SF-FILEPROPERTY-006/007 (AddSubitem L85–L136): "File", "MetaInfo" and "GPS Log" at the
+// prefix, their rows indented under them.
 void FormFileProperty::addFile(const GroupFile &f, const QString &prefix) {
     const Lang &lang = Lang::instance();
     const QString in = prefix + kIndent;
-    add(in + "File", QDir::toNativeSeparators(f.path));
+    add(prefix + "File", QDir::toNativeSeparators(f.path));
     // Media information lines (without names).
     if (f.width > 0) {
         QString video = QStringLiteral("Video: %1x%2").arg(f.width).arg(f.height);
         if (f.fps > 0) video += QStringLiteral(", %1 fps").arg(f.fps, 0, 'f', 2);
         if (f.durationMs > 0 && f.size > 0) video += QStringLiteral(", %1 kbps").arg(f.size * 8 / f.durationMs);
         if (f.gop > 0) video += QStringLiteral(", GOP %1").arg(f.gop);
-        add(QString(), video, false);
+        add(in, video, false);
     }
     add(in + "Size", QStringLiteral("%1 %2   (%3 %4)")
                          .arg(f.size)
@@ -133,25 +144,24 @@ void FormFileProperty::addFile(const GroupFile &f, const QString &prefix) {
     addStartFinish(f.start(), f.finish, f.durationState, in);
 
     if (!f.infoPath.isEmpty()) {
-        add(in + "MetaInfo", QString());
-        const QString in2 = in + kIndent;
+        add(prefix + "MetaInfo", QString());
         const QJsonObject info = fileInfo(f.infoPath);
-        add(in2 + "File", QDir::toNativeSeparators(f.infoPath));
-        if (const QString format = info.value("format").toString(); !format.isEmpty()) add(in2 + "DataFormat", format);
-        else if (const QString camera = info.value("camera").toString(); !camera.isEmpty()) add(in2 + "DataFormat", camera);
+        add(in + "File", QDir::toNativeSeparators(f.infoPath));
+        if (const QString format = info.value("format").toString(); !format.isEmpty()) add(in + "DataFormat", format);
+        else if (const QString camera = info.value("camera").toString(); !camera.isEmpty()) add(in + "DataFormat", camera);
         const int gps = int(info.value("gps").toArray().size());
         const int g = int(info.value("gsensor").toArray().size());
-        if (gps > 0) add(in2 + "GPS " + lang.tr("points"), QString::number(gps), false);
-        if (g > 0) add(in2 + "G-Sensor " + lang.tr("points"), QString::number(g), false);
+        if (gps > 0) add(in + "GPS " + lang.tr("points"), QString::number(gps), false);
+        if (g > 0) add(in + "G-Sensor " + lang.tr("points"), QString::number(g), false);
         if (f.gpsState == 2) {
             const double m = info.value("distance_km").toDouble() * 1000;
             const double kmh = info.value("avg_speed_kmh").toDouble();
             if (british) {
-                add(in2 + "Property_Track_Length", QStringLiteral("%1 %2").arg(m / 1000 / 1.609344, 0, 'f', 3).arg(lang.tr("Miles")));
-                add(in2 + "AvgSpeed", QStringLiteral("%1 %2").arg(kmh / 1.609344, 0, 'f', 1).arg(lang.tr("MilesPerH")));
+                add(in + "Property_Track_Length", QStringLiteral("%1 %2").arg(m / 1000 / 1.609344, 0, 'f', 3).arg(lang.tr("Miles")));
+                add(in + "AvgSpeed", QStringLiteral("%1 %2").arg(kmh / 1.609344, 0, 'f', 1).arg(lang.tr("MilesPerH")));
             } else {
-                add(in2 + "Property_Track_Length", QStringLiteral("%1 %2").arg(std::lround(m)).arg(lang.tr("Meters")));
-                add(in2 + "AvgSpeed", QStringLiteral("%1 %2").arg(kmh, 0, 'f', 1).arg(lang.tr("KmetersPerH")));
+                add(in + "Property_Track_Length", QStringLiteral("%1 %2").arg(std::lround(m)).arg(lang.tr("Meters")));
+                add(in + "AvgSpeed", QStringLiteral("%1 %2").arg(kmh, 0, 'f', 1).arg(lang.tr("KmetersPerH")));
             }
         }
         // The track's own time span (camera clock of the first fix to the last).
@@ -160,12 +170,12 @@ void FormFileProperty::addFile(const GroupFile &f, const QString &prefix) {
         if (start.isValid() && !pts.isEmpty()) {
             const TDateTime t0 = fmt::fromQDateTime(start);
             addStartFinish(t0 + pts.first().toArray()[0].toDouble() * kSecond,
-                           t0 + pts.last().toArray()[0].toDouble() * kSecond, 3, in2);
+                           t0 + pts.last().toArray()[0].toDouble() * kSecond, 3, in);
         }
     }
     if (!f.gpsLogPath.isEmpty()) {
-        add(in + Lang::instance().tr("GPS Log"), QString(), false);  // a key with a space
-        add(in + kIndent + "File", QDir::toNativeSeparators(f.gpsLogPath));
+        add(prefix + lang.tr("GPS Log"), QString(), false);  // a key with a space
+        add(in + "File", QDir::toNativeSeparators(f.gpsLogPath));
     }
 }
 
@@ -182,7 +192,7 @@ void FormFileProperty::popup(const FileRow &row, const Group &group, const QStri
     } else {
         add("Grouped", QString::number(group.files.size()));
         // The group's combined block.
-        add(kIndent + "File", row.path);
+        add("File", QDir::toNativeSeparators(row.path));
         add(kIndent + "Size", QStringLiteral("%1 %2   (%3 %4)")
                                   .arg(row.size)
                                   .arg(Lang::instance().tr("byte"))
@@ -195,6 +205,10 @@ void FormFileProperty::popup(const FileRow &row, const Group &group, const QStri
             add(QString(), QString(), false);
             addFile(group.files[k], QStringLiteral("[%1] ").arg(k + 1));
         }
+    }
+    // The fixed first column takes no focus (TStringGrid: Col = FixedCols); nothing is selected.
+    if (QTableWidget *g = grid(); g && g->rowCount() > 0) {
+        g->selectionModel()->setCurrentIndex(g->model()->index(0, 1), QItemSelectionModel::NoUpdate);
     }
     show();
 }
