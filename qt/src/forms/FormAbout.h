@@ -1,6 +1,6 @@
-// TFormAbout: product name, version and the original author's details.
-// Spec: shell-settings-forms.md §6.1. The DATAKAM logo, title and contacts are not shown
-// (decisions.md: no brand items); the credits come from the non-brand translation entries.
+// TFormAbout: this program (RV Player: icon, name, version, project page) and the program it is
+// based on, Registrator Viewer, with its author. Spec: shell-settings-forms.md §6.1; the DATAKAM
+// logo and contacts are not shown (decisions.md: no brand items, Q-29).
 #pragma once
 
 #include "vcl/Form.h"
@@ -16,7 +16,4 @@ public:
     Q_INVOKABLE void LabelSiteClick(vcl::Event *e);
     Q_INVOKABLE void LabelMailMouseEnter(vcl::Event *e);
     Q_INVOKABLE void LabelMailMouseLeave(vcl::Event *e);
-
-private:
-    bool aboutLifted = false;
 };

@@ -103,7 +103,19 @@ qt_add_resources(rvplayer_lib "original"
     BASE ${RV_ROOT}/assets/original
     FILES ${RV_ORIGINAL_ASSETS})
 
-qt_add_executable(rvplayer WIN32 src/main.cpp)
+# --- The application's own icon (assets/app/make_icon.py draws it).
+qt_add_resources(rvplayer_lib "app"
+    PREFIX "/app"
+    BASE ${RV_ROOT}/assets/app
+    FILES ${RV_ROOT}/assets/app/rvplayer.ico)
+
+# The program file's icon and version information.
+set(RV_VERSION 0.1.0)
+string(REPLACE "." "," RV_VERSION_COMMAS "${RV_VERSION},0")
+set(RV_ICON ${RV_ROOT}/assets/app/rvplayer.ico)
+configure_file(rvplayer.rc.in ${CMAKE_CURRENT_BINARY_DIR}/rvplayer.rc @ONLY)
+
+qt_add_executable(rvplayer WIN32 src/main.cpp ${CMAKE_CURRENT_BINARY_DIR}/rvplayer.rc)
 target_link_libraries(rvplayer PRIVATE rvplayer_lib)
 
 # --- UI tests: drive the real main window with sample recordings (see tests/tst_mainform.cpp).

@@ -136,6 +136,8 @@ private slots:
     void routeClickSeeksToThePoint();
     void mapShowsRouteOnAnyLayer();
     void mapRulerMeasures();
+    void mapCursorOverRoute();
+    void cartoLayerAsksForKey();
     void groupWithJoinsTickedRows();
     void copyCopiesFilesWithTimes();
     void cuttingListsTheSelection();
@@ -395,8 +397,19 @@ void MainFormTest::hoverOverGraphShowsDetails() {
 void MainFormTest::aboutShowsCredits() {
     form->action("N_Help_About")->trigger();
     QVERIFY(form->aboutForm && form->aboutForm->isVisible());
-    QCOMPARE(form->aboutForm->find<QLabel>("LabelTitle")->text(), QStringLiteral("Registrator Viewer"));
-    QVERIFY(!form->aboutForm->find<QWidget>("ImageLogo")->isVisible());
+    // Q-29: this program with its icon and page, then the original and its author.
+    FormAbout *a = form->aboutForm;
+    QCOMPARE(a->find<QLabel>("LabelTitle")->text(), QStringLiteral("RV Player"));
+    QVERIFY(a->find<QWidget>("ImageLogo")->isVisible());
+    QCOMPARE(a->find<QLabel>("LabelSite")->text(), QStringLiteral("github.com/mrkhrd/rvplayer"));
+    auto *original = a->findChild<QLabel *>("LabelOriginal");
+    QVERIFY(original && original->isVisible() && original->text().contains("Registrator Viewer"));
+    const QString author = a->find<QLabel>("LabelName")->text();
+    QVERIFY2(author.contains("Kozlov") || author.contains(QStringLiteral("Козлов")), qPrintable(author));
+    // Each row centred under the one before: the original, then its author.
+    QVERIFY(original->geometry().width() >= original->sizeHint().width());
+    QVERIFY(std::abs(original->geometry().center().x() - a->find<QWidget>("LabelTitle")->geometry().center().x()) <= 1);
+    QVERIFY(a->find<QLabel>("LabelName")->geometry().top() >= original->geometry().bottom());
     shot(form->aboutForm, "about");
     form->aboutForm->close();
 }
@@ -518,6 +531,67 @@ void MainFormTest::mapShowsRouteOnAnyLayer() {
     map->setLayer("OpenStreetMap");
     Settings::instance().writeString("gm_L", "OpenStreetMap");
     QTRY_VERIFY(map->engine()->layerExists("rv-route"));
+}
+
+// Over the route the cursor is a hand (a click there seeks); elsewhere an arrow.
+void MainFormTest::mapCursorOverRoute() {
+    clickRow(0);
+    QTRY_VERIFY(form->moving.hasGps());
+    MapView *map = mapReady();
+    QVERIFY(map);
+    form->setRoute();
+    QWidget *canvas = map->findChild<QOpenGLWidget *>();
+    const auto segments = form->moving.routeSegments();
+    const GpsSample p = segments.first()[segments.first().size() / 2];
+    const auto hover = [&](QPointF at) {
+        QMouseEvent move(QEvent::MouseMove, at, canvas->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &move);
+        return canvas->cursor().shape();
+    };
+    QTRY_COMPARE(hover(map->pixelFor({p.lat, p.lon}) + QPointF(2, 1)), Qt::PointingHandCursor);
+    QCOMPARE(hover(QPointF(4, canvas->height() - 4)), Qt::ArrowCursor);
+}
+
+// Q-28: a CARTO layer needs a key: without one it asks, and a cancel keeps the layer shown. The
+// key is kept and goes with CARTO's requests only.
+void MainFormTest::cartoLayerAsksForKey() {
+    MapView *map = mapReady();
+    QVERIFY(map);
+    const QString before = map->layer();
+    MapView::setApiKey("carto", QString());
+    // The next key dialog: its text, then the answer (a value to accept, or null to cancel).
+    QString asked;
+    const auto answer = [&](const QString &value) {
+        QTimer::singleShot(200, this, [&asked, value] {
+            for (QWidget *w : QApplication::topLevelWidgets()) {
+                auto *d = qobject_cast<QInputDialog *>(w);
+                if (!d || !d->isVisible()) continue;
+                asked = d->labelText();
+                if (value.isNull()) {
+                    d->reject();
+                } else {
+                    d->setTextValue(value);
+                    d->accept();
+                }
+            }
+        });
+    };
+    answer(QString());
+    QVERIFY(!map->chooseLayer("CARTO Voyager"));
+    QVERIFY2(asked.contains("carto.com/basemaps/apikey"), qPrintable(asked));
+    QCOMPARE(map->layer(), before);
+    answer(" test-key ");
+    QVERIFY(map->askApiKey("carto"));
+    QCOMPARE(Settings::instance().readString("mapKey_carto"), QString("test-key"));
+    QCOMPARE(MapView::withApiKey("https://tiles-a.basemaps.cartocdn.com/vectortiles/carto.streets/v1/1/2/3.mvt"),
+             QString("https://tiles-a.basemaps.cartocdn.com/vectortiles/carto.streets/v1/1/2/3.mvt?key=test-key"));
+    QCOMPARE(MapView::withApiKey("https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json?v=1"),
+             QString("https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json?v=1&key=test-key"));
+    for (const char *other : {"https://tile.openstreetmap.org/1/2/3.png", "https://xbasemaps.cartocdn.com/1.png"}) {
+        QCOMPARE(MapView::withApiKey(other), QString(other));
+    }
+    MapView::setApiKey("carto", QString());
+    Settings::instance().remove("mapKey_carto");
 }
 
 // GM-153 distance tool: the ruler adds a vertex per click and sums the legs; the cross clears.

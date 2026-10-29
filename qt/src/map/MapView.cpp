@@ -1,5 +1,7 @@
 #include "MapView.h"
 
+#include "i18n/Lang.h"
+
 #include <QMapLibre/Map>
 #include <QMapLibre/Settings>
 #include <QMapLibreWidgets/GLWidget>
@@ -9,6 +11,7 @@
 #include <QFile>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -22,11 +25,14 @@
 #include <QStandardPaths>
 #include <QToolButton>
 #include <QToolTip>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QVariantAnimation>
 #include <QXmlStreamReader>
 
 #include <cmath>
+#include <mutex>
 
 namespace {
 
@@ -177,7 +183,39 @@ QIcon layersIcon() {
     return QIcon(pm);
 }
 
+// Q-28: the providers' API keys, read by the engine's request threads, and their servers.
+std::mutex keyLock;
+QHash<QString, QString> keys;
+const QHash<QString, QString> keyHosts{{"carto", "basemaps.cartocdn.com"}};
+
+// The engine's resource transform.
+std::string withKey(const std::string &url) {
+    return MapView::withApiKey(QString::fromStdString(url)).toStdString();
+}
+
 }  // namespace
+
+// A request to a provider's server carries its key (?key=).
+QString MapView::withApiKey(const QString &url) {
+    const QString host = QUrl(url).host();
+    for (auto it = keyHosts.begin(); it != keyHosts.end(); ++it) {
+        if (host != it.value() && !host.endsWith('.' + it.value())) continue;
+        const QString key = apiKey(it.key());
+        if (key.isEmpty() || QUrlQuery(QUrl(url)).hasQueryItem("key")) return url;
+        return url + (url.contains('?') ? '&' : '?') + "key=" + QString::fromLatin1(QUrl::toPercentEncoding(key));
+    }
+    return url;
+}
+
+void MapView::setApiKey(const QString &service, const QString &key) {
+    const std::lock_guard lock(keyLock);
+    keys.insert(service, key.trimmed());
+}
+
+QString MapView::apiKey(const QString &service) {
+    const std::lock_guard lock(keyLock);
+    return keys.value(service);
+}
 
 const QVector<MapView::Layer> &MapView::layers() {
     static const QString osm = QStringLiteral("&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors");
@@ -190,6 +228,10 @@ const QVector<MapView::Layer> &MapView::layers() {
         {"OpenFreeMap Positron", true, freeMap + "positron", {}},
         {"OpenFreeMap Dark", true, freeMap + "dark", {}},
         {"OpenFreeMap Fiord", true, freeMap + "fiord", {}},
+        // CARTO's styles and every tile, sprite and font of theirs need a (free) key.
+        {"CARTO Voyager", true, "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json", {}, 19, "carto"},
+        {"CARTO Positron", true, "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json", {}, 19, "carto"},
+        {"CARTO Dark Matter", true, "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json", {}, 19, "carto"},
         {"OpenStreetMap", false, "https://tile.openstreetmap.org/{z}/{x}/{y}.png", osm},
         {"OpenStreetMap Humanitarian", false, "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
          osm + ", Tiles style by <a href=\"https://www.hotosm.org/\">HOT</a>"},
@@ -297,6 +339,7 @@ MapView::MapView(QWidget *parent) : QWidget(parent) {
     QDir().mkpath(cache);
     s.setCacheDatabasePath(QDir(cache).filePath("map-tiles.db"));
     s.setCacheDatabaseMaximumSize(256u * 1024 * 1024);
+    s.setResourceTransform(withKey);
     canvas = new Canvas(s, this);
     canvas->installEventFilter(this);
     auto *l = new QVBoxLayout(this);
@@ -381,13 +424,17 @@ MapView::MapView(QWidget *parent) : QWidget(parent) {
         QAction *a = menu->addAction(l.name);
         a->setCheckable(true);
         group->addAction(a);
-        connect(a, &QAction::triggered, this, [this, name = l.name] {
-            setLayer(name);
-            emit layerChanged(name);
-        });
+        connect(a, &QAction::triggered, this, [this, name = l.name] { chooseLayer(name); });
     }
-    connect(menu, &QMenu::aboutToShow, this, [this, menu] {
-        for (QAction *a : menu->actions()) a->setChecked(a->text() == layer_);
+    menu->addSeparator();
+    QAction *cartoKey = menu->addAction(QStringLiteral("CARTO API key..."));
+    cartoKey->setObjectName("cartoKey");
+    connect(cartoKey, &QAction::triggered, this, [this] { askApiKey("carto"); });
+    connect(menu, &QMenu::aboutToShow, this, [this, menu, cartoKey] {
+        for (QAction *a : menu->actions()) {
+            if (a->isCheckable()) a->setChecked(a->text() == layer_);
+        }
+        cartoKey->setText(Lang::instance().current() == "ru" ? QStringLiteral("Ключ API CARTO...") : QStringLiteral("CARTO API key..."));
     });
     layerButton->setMenu(menu);
 
@@ -537,6 +584,7 @@ void MapView::setData(const QString &source, const QByteArray &geojson) {
 }
 
 void MapView::setPaths(const QVector<Path> &paths) {
+    paths_ = paths;
     QByteArrayList route, gaps, selected;
     for (const Path &p : paths) {
         if (p.points.size() < 2) continue;
@@ -720,21 +768,82 @@ void MapView::updateRuler() {
     setData("rv-ruler-points", collection(pts));
 }
 
-// A vertex of the distance line under the mouse shows the distance up to it.
+// A vertex of the distance line under the mouse shows the distance up to it; over the route the
+// cursor is a hand (the page's clickable lines), as the route is clicked to seek.
 bool MapView::eventFilter(QObject *watched, QEvent *ev) {
-    if (watched == canvas && ev->type() == QEvent::MouseMove && !ruler.isEmpty()) {
-        const QPointF pos = static_cast<QMouseEvent *>(ev)->position();
-        double d = 0;
-        for (int i = 0; i < ruler.size(); ++i) {
-            if (i) d += distance(ruler[i - 1], ruler[i]);
-            if (QLineF(pixelFor(ruler[i]), pos).length() <= 6) {
-                QToolTip::showText(static_cast<QMouseEvent *>(ev)->globalPosition().toPoint(), distanceText(d), canvas);
-                return false;
+    if (watched == canvas && ev->type() == QEvent::MouseMove) {
+        auto *me = static_cast<QMouseEvent *>(ev);
+        const QPointF pos = me->position();
+        if (!ruler.isEmpty()) {
+            double d = 0;
+            for (int i = 0; i < ruler.size(); ++i) {
+                if (i) d += distance(ruler[i - 1], ruler[i]);
+                if (QLineF(pixelFor(ruler[i]), pos).length() <= 6) {
+                    QToolTip::showText(me->globalPosition().toPoint(), distanceText(d), canvas);
+                    return false;
+                }
             }
+            QToolTip::hideText();
         }
-        QToolTip::hideText();
+        if (!rulerOn && me->buttons() == Qt::NoButton) canvas->setCursor(routeAt(pos) ? Qt::PointingHandCursor : Qt::ArrowCursor);
     }
     return QWidget::eventFilter(watched, ev);
+}
+
+bool MapView::routeAt(QPointF pixel) const {
+    if (paths_.isEmpty() || !engine()) return false;
+    const double mpp = view().metresPerPixel;
+    if (mpp <= 0) return false;
+    // In metres around the point: the distance to each leg.
+    const GeoPoint c = coordinateFor(pixel);
+    const double kx = 111320.0 * std::cos(c.lat * M_PI / 180), ky = 110540.0, tolerance = 6 * mpp;
+    for (const Path &p : paths_) {
+        for (int i = 1; i < p.points.size(); ++i) {
+            const double ax = (p.points[i - 1].lon - c.lon) * kx, ay = (p.points[i - 1].lat - c.lat) * ky;
+            const double dx = (p.points[i].lon - c.lon) * kx - ax, dy = (p.points[i].lat - c.lat) * ky - ay;
+            const double len2 = dx * dx + dy * dy;
+            const double t = len2 > 0 ? std::clamp(-(ax * dx + ay * dy) / len2, 0.0, 1.0) : 0.0;
+            if (std::hypot(ax + t * dx, ay + t * dy) <= tolerance) return true;
+        }
+    }
+    return false;
+}
+
+// From the layer menu.
+bool MapView::chooseLayer(const QString &name) {
+    for (const Layer &l : layers()) {
+        if (l.name != name) continue;
+        if (!l.keyService.isEmpty() && apiKey(l.keyService).isEmpty() && !askApiKey(l.keyService)) return false;
+        setLayer(name);
+        emit layerChanged(name);
+        return true;
+    }
+    return false;
+}
+
+// Q-28: asks for a provider's key (with where to get one); an empty key removes it.
+bool MapView::askApiKey(const QString &service) {
+    const bool ru = Lang::instance().current() == "ru";
+    QInputDialog dialog(this);
+    dialog.setWindowTitle(ru ? QStringLiteral("Ключ API CARTO") : QStringLiteral("CARTO API key"));
+    dialog.setLabelText(ru ? QStringLiteral("Карты CARTO работают с бесплатным ключом API:<br>"
+                                            "<a href=\"https://carto.com/basemaps/apikey\">carto.com/basemaps/apikey</a><br><br>Ключ:")
+                           : QStringLiteral("CARTO maps need a free API key:<br>"
+                                            "<a href=\"https://carto.com/basemaps/apikey\">carto.com/basemaps/apikey</a><br><br>Key:"));
+    for (QLabel *label : dialog.findChildren<QLabel *>()) {
+        label->setTextFormat(Qt::RichText);
+        label->setOpenExternalLinks(true);
+    }
+    dialog.setTextValue(apiKey(service));
+    if (dialog.exec() != QDialog::Accepted) return false;
+    const QString key = dialog.textValue().trimmed();
+    setApiKey(service, key);
+    emit apiKeyChanged(service, key);
+    // A layer of theirs on show fetched placeholders without the key: its style again.
+    for (const Layer &l : layers()) {
+        if (l.name == layer_ && l.keyService == service) applyStyle();
+    }
+    return !key.isEmpty();
 }
 
 void MapView::resizeEvent(QResizeEvent *e) {
