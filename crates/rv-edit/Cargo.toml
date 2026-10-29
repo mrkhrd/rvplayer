@@ -1,0 +1,15 @@
+[package]
+name = "rv-edit"
+description = "Export of video fragments without re-encoding: cutting, joining, speed-up, RVMI meta track"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rv-core.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+rv-core = { workspace = true, features = ["testutil"] }
+rv-video.workspace = true

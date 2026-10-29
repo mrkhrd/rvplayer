@@ -15,6 +15,11 @@ extern "C" {
  * Never NULL: read errors are reported in the "error" field. */
 char *rv_file_info_json(const char *path);
 
+/* GPS/G-sensor track of a GPS log (any supported format) or a video's embedded track, as JSON with "format" and "error" (see rv-ffi/src/lib.rs). Never NULL. */
+char *rv_gps_track_json(const char *path);
+/* Lower-case extensions of the GPS log formats, as a JSON array of strings. */
+char *rv_gps_extensions_json(void);
+
 /* Sorted list of video files (.mov/.mp4) in a folder, as a JSON array of paths; "[]" on error. */
 char *rv_list_videos_json(const char *dir);
 
@@ -93,6 +98,44 @@ void rv_fm_group(RvFileManager *fm, const int32_t *indices, int32_t count);     
 void rv_fm_ungroup(RvFileManager *fm, const int32_t *indices, int32_t count);                /* FL-056 */
 void rv_fm_ungroup_all(RvFileManager *fm);                                                    /* FL-058 */
 void rv_fm_group_auto(RvFileManager *fm);                                                     /* §4.6.2 */
+/* MN-012: the GPS logs found so far, as a JSON array of paths. */
+char *rv_fm_log_files_json(RvFileManager *fm);
+/* FL-074: moves every file of a row by `days` (TDateTime days) against its GPS. */
+void rv_fm_shift_video(RvFileManager *fm, int32_t index, double days);
+/* FL-073: a GPS log or video becomes the GPS info of every file of a row; 0 without GPS data. */
+int32_t rv_fm_set_track(RvFileManager *fm, int32_t index, const char *path);
+
+/* --- GPS track writers (FL-071/072, GM-192, SRT; see rv-ffi/src/gpswrite.rs) ------------- */
+/* [{"id", "caption", "ext"}] in the original's order. */
+char *rv_gps_writers_json(void);
+/* Reads the job's sources and writes them as one track; {"ok", "error", "has_points", "name",
+ * "file_name", "start", "finish"}. A job without "writer" only describes the track. */
+char *rv_gps_write_json(const char *job_json);
+/* {"default_template", "text"}: the SRT cue text of one sample fix. */
+char *rv_gps_srt_preview_json(const char *job_json);
+
+/* --- Fragment export (rv-edit, SF-CROPPING-025…030) ------------------------------------- */
+typedef struct RvExport RvExport;
+/* Starts an export described by a JSON job (see rv-ffi/src/export.rs); NULL if it is invalid. */
+RvExport *rv_export_start(const char *job_json);
+/* Progress and, once "finished", the result (see rv-ffi/src/export.rs). Release with rv_string_free. */
+char *rv_export_status_json(const RvExport *job);
+void rv_export_cancel(const RvExport *job);
+/* Cancels if running, waits for the thread and frees the job. */
+void rv_export_free(RvExport *job);
+
+/* --- Fast repair (rv-repair, SF-REPAIR-013/014/017) ------------------------------------- */
+typedef struct RvRepair RvRepair;
+/* Starts rebuilding the header of `broken` in place from `reference` (a good file of the same
+ * camera) on a background thread; NULL if it cannot start. */
+RvRepair *rv_repair_start(const char *broken, const char *reference);
+/* {"percent", "frames", "finished", "cancelled", "error": null | text}. Release with rv_string_free. */
+char *rv_repair_status_json(const RvRepair *job);
+void rv_repair_cancel(const RvRepair *job);
+/* Cancels if running, waits for the thread and frees the job. */
+void rv_repair_free(RvRepair *job);
+/* SF-REPAIR-011: 1 when the file's media is encrypted. */
+int32_t rv_repair_is_encrypted(const char *path);
 
 #ifdef __cplusplus
 }

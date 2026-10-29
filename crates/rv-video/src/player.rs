@@ -135,7 +135,11 @@ fn run(
             }) => {
                 generation = g;
                 at_end = false;
+                let started = std::time::Instant::now();
                 pending = Some(to_event(stream.seek(time), generation));
+                if std::env::var_os("RV_TRACE").is_some() {
+                    eprintln!("decoder: seek to {time:.3}s took {} ms", started.elapsed().as_millis());
+                }
                 continue;
             }
             None if at_end && pending.is_none() => return, // command channel closed

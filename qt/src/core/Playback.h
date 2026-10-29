@@ -30,6 +30,10 @@ public:
     bool active() const { return player != nullptr; }
     State state() const { return state_; }
     int fileIndex() const { return current; }
+    // Media time of the frame on screen, -1 before the first one.
+    double displayedTime() const { return shownTime; }
+    // Number of seek() calls so far (tests check one user action makes one seek).
+    int seekRequests() const { return seekCount; }
 
     void play();
     void pause();
@@ -45,6 +49,8 @@ public:
 
     // PV-052 / Q-6: the clock runs at `rate` times real time.
     void setRate(double rate);
+    // FL-075: seconds cut from the end of each file of a group (the overlap with the next one).
+    void setTrimTail(double seconds) { trimTail = std::max(0.0, seconds); }
     double rate() const { return rate_; }
 
     // Q-8: true single-frame steps while paused.
@@ -75,7 +81,9 @@ private:
     int current = -1;
     State state_ = State::Stopped;
     double lastSeekPos = 0;
+    int seekCount = 0;
     double rate_ = 1;
+    double trimTail = 0;
 
     QTimer pumpTimer;
     QElapsedTimer clock;
@@ -88,4 +96,5 @@ private:
     double duration = 0;          // seconds of the open file
     double frameRate = 30;
     bool endOfStream = false;
+    QElapsedTimer seekLatency;  // RV_TRACE: seek request to first frame
 };

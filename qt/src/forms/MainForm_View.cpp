@@ -6,6 +6,7 @@
 
 #include "core/Playback.h"
 #include "core/Settings.h"
+#include "map/MapView.h"
 #include "filelist/FileListView.h"
 #include "i18n/Lang.h"
 #include "vcl/AlignLayout.h"
@@ -48,8 +49,14 @@ bool isInside(const QWidget *w, const QWidget *container) {
 
 // AddLanguages (L533–L546): one radio item per language; the click is DoTranslate.
 void MainForm::addLanguages() {
-    QMenu *m = menu("N_View_Language");
-    if (!m) return;
+    QAction *item = action("N_View_Language");
+    if (!item) return;
+    // The form file gives the item no children, so it needs a submenu to hold the languages.
+    QMenu *m = item->menu();
+    if (!m) {
+        m = new QMenu(this);
+        item->setMenu(m);
+    }
     Lang &lang = Lang::instance();
     for (const QString &id : lang.ids()) {
         const QString name = "N_View_Language_" + QString(id).replace('-', '_');
@@ -293,6 +300,7 @@ void MainForm::VideoWindowWMRMouseDown(vcl::Event *e) {
 
 // PV-066, PV-068, PV-073.
 void MainForm::VideoWindowWMRMouseMove(vcl::Event *e) {
+    hideDetails();
     if (video && video->cursor().shape() == Qt::BlankCursor) video->setCursor(Qt::ArrowCursor);
     if (QTimer *t = timer("TimerMouseHide")) {
         auto *play = find<QToolButton>("ButtonPlay");
@@ -440,7 +448,8 @@ bool MainForm::routeWheel(QWheelEvent *e) {
         }
         return true;
     }
-    return false;  // the map and the list scroll themselves
+    if (MapView *map = mapView(); map && isInside(under, map)) return mapWheel(e->angleDelta().y(), e->globalPosition().toPoint());
+    return false;  // the list scrolls itself
 }
 
 // PV-081 (ApplicationEventsShortCut L4411–L4445).

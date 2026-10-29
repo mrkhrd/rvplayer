@@ -1,0 +1,14 @@
+[package]
+name = "rv-repair"
+description = "Fast in-place repair of broken dashcam MOV/MP4 files (rebuilds moov from a reference file)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rv-core.workspace = true
+
+[dev-dependencies]
+rv-core = { workspace = true, features = ["testutil"] }
+rv-video.workspace = true

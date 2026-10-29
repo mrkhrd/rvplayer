@@ -48,20 +48,31 @@ pub fn extension_rank(path: &str) -> i32 {
 /// Returning `None` means the file could not be read as GPS data.
 pub trait GpsLoader: Send + Sync {
     fn load(&self, path: &Path) -> Option<Track>;
+
+    /// Like [`GpsLoader::load`], with the format id of the data ("NMEA", "gpx", "movRegV",
+    /// ...; empty when unknown), shown as the file's GPS format.
+    fn load_with_format(&self, path: &Path) -> Option<(Track, String)> {
+        self.load(path).map(|t| (t, String::new()))
+    }
 }
 
-/// The loader used by default: embedded tracks of videos (rv-core). Sidecar log formats
-/// (GPX, NMEA, ...) are not parsed yet, so logs load as `None`; plug a parser in here.
+/// The loader used by default (rv-core): the embedded track of a video (`FileInfo`), or a
+/// GPS log in any of the original's formats (`rv_core::gps`).
 pub struct DefaultGpsLoader;
 
 impl GpsLoader for DefaultGpsLoader {
     fn load(&self, path: &Path) -> Option<Track> {
+        self.load_with_format(path).map(|(t, _)| t)
+    }
+
+    fn load_with_format(&self, path: &Path) -> Option<(Track, String)> {
         let ext = extension_lower(&path.to_string_lossy())?;
-        if !SCAN_VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-            return None;
+        if SCAN_VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+            let info = FileInfo::load(path);
+            return (info.error.is_none() && !info.track.is_empty())
+                .then(|| (info.track, info.gps_format.unwrap_or_default()));
         }
-        let info = FileInfo::load(path);
-        (info.error.is_none() && !info.track.is_empty()).then_some(info.track)
+        rv_core::gps::load_log_file(path).ok().map(|log| (log.track, log.format))
     }
 }
 

@@ -5,6 +5,7 @@
 #include "i18n/Lang.h"
 
 #include <QAbstractScrollArea>
+#include <QAbstractSpinBox>
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -12,6 +13,7 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileSystemModel>
 #include <QGroupBox>
@@ -37,6 +39,7 @@
 #include <QTreeWidget>
 
 #include <cmath>
+#include <cstdio>
 #include <functional>
 
 namespace vcl {
@@ -83,6 +86,29 @@ bool isNonVisual(const QString &cls) {
 
 }  // namespace
 
+// KeyPreview: key events of any control in this window go to the form first. It sees every
+// event of the application, so it is a separate object: the form itself is installed on its
+// controls, and an application-wide form filter would run each control's handlers twice.
+class Form::KeyPreview : public QObject {
+public:
+    explicit KeyPreview(Form *form) : QObject(form), form(form) {}
+    bool eventFilter(QObject *watched, QEvent *ev) override {
+        if (ev->type() != QEvent::KeyPress && ev->type() != QEvent::KeyRelease) return false;
+        auto *w = qobject_cast<QWidget *>(watched);
+        const char *name = ev->type() == QEvent::KeyPress ? "OnKeyDown" : "OnKeyUp";
+        if (!w || w->window() != form || !form->handlers.value(form).contains(name)) return false;
+        auto *k = static_cast<QKeyEvent *>(ev);
+        Event e;
+        e.key = k->key();
+        e.modifiers = k->modifiers();
+        form->fire(form, name, &e);
+        return e.handled;
+    }
+
+private:
+    Form *form;
+};
+
 Form::Form(QWidget *parent) : QWidget(parent) {}
 
 QPixmap Form::resourceBitmap(const QString &fileName) {
@@ -115,10 +141,13 @@ bool Form::load(const QString &dfmPath) {
 
     const bool hasClient = root.has("ClientWidth");
     const bool hasMenu = root.has("Menu");
+    // BorderWidth frames the client area (VCL: non-client, inside the window frame).
+    const int border = int(root.intProp("BorderWidth", 0));
     const QSize client = hasClient ? QSize(int(root.intProp("ClientWidth")), int(root.intProp("ClientHeight")))
-                                   : QSize(int(root.intProp("Width")) - 16, int(root.intProp("Height")) - 39 - (hasMenu ? 20 : 0));
+                                   : QSize(int(root.intProp("Width")) - 16 - 2 * border,
+                                           int(root.intProp("Height")) - 39 - (hasMenu ? 20 : 0) - 2 * border);
     auto *layout = new AlignLayout(this, client);
-    Q_UNUSED(layout);
+    layout->setContentsMargins(border, border, border, border);
 
     for (const DfmObject &child : root.children) build(child, this);
     if (menuBar) {
@@ -127,8 +156,8 @@ bool Form::load(const QString &dfmPath) {
     }
     attachPopupMenus();
     bindHandlers(this, root);
-    resize(client.width(), client.height() + (menuBar ? menuBar->sizeHint().height() : 0));
-    if (keyPreview) qApp->installEventFilter(this);
+    resize(client.width() + 2 * border, client.height() + 2 * border + (menuBar ? menuBar->sizeHint().height() : 0));
+    if (keyPreview) qApp->installEventFilter(new KeyPreview(this));
 
     created = true;
     fire(this, "OnCreate");
@@ -264,6 +293,7 @@ QWidget *Form::createDefault(const DfmObject &def, QWidget *parent) {
     if (cls == "TGroupBox") {
         auto *g = new QGroupBox(caption, parent);
         makeContainer(g, def, QMargins(2, 16, 2, 2));
+        layoutOf(g)->setPositionsFromWidgetOrigin(true);
         return g;
     }
     if (cls == "TScrollBox") {
@@ -291,6 +321,9 @@ QWidget *Form::createDefault(const DfmObject &def, QWidget *parent) {
         const Qt::Alignment v = lay == "tlCenter" ? Qt::AlignVCenter : lay == "tlBottom" ? Qt::AlignBottom : Qt::AlignTop;
         l->setAlignment(h | v);
         l->setWordWrap(def.boolProp("WordWrap"));
+        // VCL labels size themselves to their caption unless AutoSize is off or they wrap.
+        l->setProperty("vclAutoSize", cls == "TLabel" && def.boolProp("AutoSize", true) && !def.boolProp("WordWrap"));
+        l->setProperty("vclRightJustify", al == "taRightJustify");
         if (cls == "TStaticText" && def.stringProp("BorderStyle") == "sbsSunken") l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         return l;
     }
@@ -475,7 +508,12 @@ void Form::applyCommon(QWidget *w, const DfmObject &def) {
         if (col.isValid()) {
             QPalette p = w->palette();
             p.setColor(QPalette::Window, col);
-            p.setColor(QPalette::Base, col);
+            // Only an input control's own colour fills its text area. A form or panel colour
+            // does not reach the edits and lists on it, which stay clWindow as in VCL.
+            if (qobject_cast<QAbstractScrollArea *>(w) || qobject_cast<QLineEdit *>(w) || qobject_cast<QComboBox *>(w) ||
+                qobject_cast<QAbstractSpinBox *>(w)) {
+                p.setColor(QPalette::Base, col);
+            }
             w->setPalette(p);
             w->setAutoFillBackground(true);
         }
@@ -758,18 +796,6 @@ bool Form::fire(QObject *sender, const QString &eventName, Event *e) {
 }
 
 bool Form::eventFilter(QObject *watched, QEvent *ev) {
-    // KeyPreview: key events of any control in this window go to the form first.
-    if (keyPreview && (ev->type() == QEvent::KeyPress || ev->type() == QEvent::KeyRelease)) {
-        auto *w = qobject_cast<QWidget *>(watched);
-        if (w && w->window() == this && handlers.value(this).contains(ev->type() == QEvent::KeyPress ? "OnKeyDown" : "OnKeyUp")) {
-            auto *k = static_cast<QKeyEvent *>(ev);
-            Event e;
-            e.key = k->key();
-            e.modifiers = k->modifiers();
-            fire(this, ev->type() == QEvent::KeyPress ? "OnKeyDown" : "OnKeyUp", &e);
-            if (e.handled) return true;
-        }
-    }
     if (!handlers.contains(watched) || watched == this) return QWidget::eventFilter(watched, ev);
 
     auto mouse = [&](const QString &name) {
@@ -844,6 +870,27 @@ void Form::closeEvent(QCloseEvent *e) {
     }
     fire(this, "OnClose");
     QWidget::closeEvent(e);
+    if (modalLoop) modalLoop->quit();
+}
+
+int Form::showModal() {
+    if (!isWindow() || parentWidget()) setWindowFlag(Qt::Dialog);
+    setWindowModality(Qt::ApplicationModal);
+    modalResult = 0;
+    show();
+    raise();
+    activateWindow();
+    QEventLoop loop;
+    modalLoop = &loop;
+    loop.exec();
+    modalLoop = nullptr;
+    setWindowModality(Qt::NonModal);
+    return modalResult;
+}
+
+void Form::setModalResult(int result) {
+    modalResult = result;
+    close();
 }
 
 void Form::resizeEvent(QResizeEvent *e) {

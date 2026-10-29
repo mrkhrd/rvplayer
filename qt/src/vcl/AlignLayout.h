@@ -35,6 +35,9 @@ public:
 
     // Insets applied to the area available for aligned controls (bevels, border width).
     void setAlignMargins(QMargins m);
+    // TGroupBox: positions of non-aligned controls count from the box's top-left corner (the
+    // caption area included), not from the area under the title.
+    void setPositionsFromWidgetOrigin(bool on) { fromWidgetOrigin = on; }
 
     // Current size used for an aligned control (its Width for alLeft/alRight, Height for
     // alTop/alBottom). Splitters and code change it, like setting Width/Height in VCL.
@@ -70,6 +73,7 @@ private:
     QSize designClient;
     QMargins alignMargins;
     QRect lastClient;
+    bool fromWidgetOrigin = false;
     int nextOrder = 0;
 };
 

@@ -1,7 +1,11 @@
 #include "MovingInfo.h"
 
+#include "core/Format.h"
+#include "core/Trace.h"
 #include "rv_ffi.h"
 
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -16,6 +20,14 @@ constexpr double kOutside = 5.5 * kSecond;  // GM-105: the end sample covers 5.5
 
 QJsonObject fileInfo(const QString &path) {
     char *raw = rv_file_info_json(path.toUtf8().constData());
+    const QJsonObject o = QJsonDocument::fromJson(raw).object();
+    rv_string_free(raw);
+    return o;
+}
+
+// A GPS log (or any file the core can read a track from).
+QJsonObject gpsTrack(const QString &path) {
+    char *raw = rv_gps_track_json(path.toUtf8().constData());
     const QJsonObject o = QJsonDocument::fromJson(raw).object();
     rv_string_free(raw);
     return o;
@@ -61,23 +73,48 @@ void MovingInfo::clear() {
     files.clear();
 }
 
-void MovingInfo::load(const Group &group) {
+void MovingInfo::load(const Group &group, const Options &options) {
+    RV_TRACE_SCOPE("MovingInfo::load");
     files.clear();
     double trackOffset = 0;  // the trip counter continues over the files of a group
+    QHash<QString, QJsonObject> logs;  // a log shared by several files is read once (FL-031)
     for (const GroupFile &f : group.files) {
         FileTrack ft;
-        const QJsonObject info = fileInfo(f.path);
-        const TDateTime t0 = f.start();
+        // FL-031: the file's GPS info (inside the video or a same-name sidecar), else its GPS log.
+        const QString source = !f.infoPath.isEmpty() ? f.infoPath : f.gpsLogPath;
+        const bool own = source.isEmpty() || QFileInfo(source) == QFileInfo(f.path);
+        QJsonObject info;
+        TDateTime t0 = f.start();
+        if (own) {
+            info = fileInfo(f.path);  // times from the start of the video
+        } else {
+            if (!logs.contains(source)) logs.insert(source, gpsTrack(source));
+            info = logs.value(source);
+            // A log has wall-clock times; it is cropped to this file's time span.
+            t0 = fmt::fromQDateTime(QDateTime::fromString(info.value("start").toString(), Qt::ISODateWithMs));
+        }
+        auto inside = [&](TDateTime t) { return own || (t >= f.start() && t <= f.finish); };
         for (const QJsonValue &v : info.value("gps").toArray()) {
             const QJsonArray a = v.toArray();
             GpsSample s;
             s.t = t0 + a[0].toDouble() * kSecond;
+            if (!inside(s.t)) continue;
             s.lat = a[1].toDouble();
             s.lon = a[2].toDouble();
             s.alt = a[3].toDouble();
             s.speed = a[4].toDouble();
             s.course = a[5].toDouble();
             s.warn = a[6].toInt() != 0;
+            // GM-101: flips first, then the shift.
+            if (options.flipX) s.lon = -s.lon;
+            if (options.flipY) s.lat = -s.lat;
+            s.lon += options.shiftX;
+            s.lat += options.shiftY;
+            if (options.speedFromCoordinates) {
+                s.speed = -1;
+                s.course = -1;
+                s.warn = false;
+            }
             // GM-104: points on whole degrees (including zeroed ones) are not positions.
             if (s.lat == std::floor(s.lat) || s.lon == std::floor(s.lon)) continue;
             ft.gps.append(s);
@@ -91,11 +128,20 @@ void MovingInfo::load(const Group &group) {
             const bool ok = !b.warn && dt > 0 && dt < 20 && d < 1000 && d / dt < 500;
             b.track = a.track + (ok ? d : 0);
         }
+        if (options.speedFromCoordinates) deriveSpeedAndBearing(ft.gps);
         for (GpsSample &s : ft.gps) s.track += trackOffset;
         if (!ft.gps.isEmpty()) trackOffset = ft.gps.last().track;
         for (const QJsonValue &v : info.value("gsensor").toArray()) {
             const QJsonArray a = v.toArray();
-            ft.g.append({t0 + a[0].toDouble() * kSecond, a[1].toDouble(), a[2].toDouble(), a[3].toDouble()});
+            const GSample s{t0 + a[0].toDouble() * kSecond, a[1].toDouble(), a[2].toDouble(), a[3].toDouble()};
+            if (!inside(s.t)) continue;
+            // Some cameras store each reading twice (5 Hz data at 10 Hz). The repeat would make
+            // every other G value 0 and the graph a sawtooth, so it is dropped (original bug, fixed).
+            if (!ft.g.isEmpty()) {
+                const GSample &p = ft.g.last();
+                if (s.x == p.x && s.y == p.y && s.z == p.z && s.t - p.t <= 0.25 * kSecond) continue;
+            }
+            ft.g.append(s);
         }
         // GM-103 steps 5–8: remove each axis' median, then the total vector and the horizontal change.
         QVector<double> xs, ys, zs;
@@ -120,6 +166,36 @@ void MovingInfo::load(const Group &group) {
     }
 }
 
+void MovingInfo::loadSource(const QString &path) {
+    // One file whose GPS info is `path` and whose window holds any time.
+    GroupFile f;
+    f.infoPath = path;
+    f.finish = 1e7;
+    f.duration = 2e7;
+    Group g;
+    g.files = {f};
+    load(g);
+}
+
+int MovingInfo::gpsCount() const {
+    int n = 0;
+    for (const FileTrack &f : files) n += int(f.gps.size());
+    return n;
+}
+
+double MovingInfo::span() const {
+    double lo = 1e9, hi = -1e9;
+    for (const FileTrack &f : files) {
+        for (const auto *t : {f.gps.isEmpty() ? nullptr : &f.gps.first().t, f.gps.isEmpty() ? nullptr : &f.gps.last().t,
+                              f.g.isEmpty() ? nullptr : &f.g.first().t, f.g.isEmpty() ? nullptr : &f.g.last().t}) {
+            if (!t) continue;
+            lo = std::min(lo, *t);
+            hi = std::max(hi, *t);
+        }
+    }
+    return hi > lo ? hi - lo : 0;
+}
+
 bool MovingInfo::hasGps() const {
     return std::any_of(files.begin(), files.end(), [](const FileTrack &f) { return f.gps.size() >= 2; });
 }
@@ -137,6 +213,7 @@ double MovingInfo::trackLength() const {
 
 MovingValue MovingInfo::at(TDateTime t) const {
     MovingValue r;
+    int gpsBase = 0, gBase = 0;
     for (const FileTrack &f : files) {
         if (!r.gps && !f.gps.isEmpty() && t >= f.gps.first().t - kOutside && t <= f.gps.last().t + kOutside) {
             const int i = lowerIndex(f.gps, t);
@@ -145,6 +222,7 @@ MovingValue MovingInfo::at(TDateTime t) const {
             const double span = b.t - a.t;
             const double k = (i < 0 || span <= 0) ? 0 : std::clamp((t - a.t) / span, 0.0, 1.0);
             r.gps = true;
+            r.gpsIndex = gpsBase + std::max(i, 0);
             r.lat = lerp(a.lat, b.lat, k);
             r.lon = lerp(a.lon, b.lon, k);
             r.speed = lerp(a.speed, b.speed, k);
@@ -160,10 +238,13 @@ MovingValue MovingInfo::at(TDateTime t) const {
             const double span = b.t - a.t;
             const double k = (i < 0 || span <= 0) ? 0 : std::clamp((t - a.t) / span, 0.0, 1.0);
             r.gsensor = true;
+            r.gIndex = gBase + std::max(i, 0);
             r.x = lerp(a.x, b.x, k);
             r.y = lerp(a.y, b.y, k);
             r.z = lerp(a.z, b.z, k);
         }
+        gpsBase += int(f.gps.size());
+        gBase += int(f.g.size());
     }
     return r;
 }
@@ -252,4 +333,26 @@ QVector<QVector<GpsSample>> MovingInfo::routeSegments() const {
     }
     if (run.size() >= 2) out.append(run);
     return out;
+}
+
+// GM-104 (coordinate-only mode): speed from the distance over a window around each point that
+// spans a time step, bearing between points i-2 and i+4.
+void MovingInfo::deriveSpeedAndBearing(QVector<GpsSample> &gps) {
+    const int n = int(gps.size());
+    for (int i = 0; i < n; ++i) {
+        for (int w = 1; w <= 10; ++w) {
+            const int a = std::max(0, i - w), b = std::min(n - 1, i + w);
+            const double dt = (gps[b].t - gps[a].t) * 86400.0;
+            if (dt <= 0) continue;
+            gps[i].speed = (gps[b].track - gps[a].track) / dt * 3.6;
+            break;
+        }
+        if (gps[i].speed < 0) gps[i].speed = 0;
+        const GpsSample &p = gps[std::max(0, i - 2)];
+        const GpsSample &q = gps[std::min(n - 1, i + 4)];
+        const double dx = (q.lon - p.lon) * std::cos(gps[i].lat * M_PI / 180);
+        const double dy = q.lat - p.lat;
+        if (dx != 0 || dy != 0) gps[i].course = std::fmod(std::atan2(dx, dy) * 180 / M_PI + 360, 360);
+        else if (i > 0) gps[i].course = gps[i - 1].course;
+    }
 }

@@ -1,8 +1,11 @@
 #include "Playback.h"
 
+#include "core/Trace.h"
 #include "rv_ffi.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <thread>
 #include <cmath>
 
 namespace {
@@ -44,8 +47,11 @@ void Playback::setGroup(const Group &g) {
 }
 
 void Playback::closePlayer() {
+    RV_TRACE_SCOPE("Playback::closePlayer");
     pumpTimer.stop();
-    if (player) rv_player_close(player);
+    // Closing waits for the decoding thread to finish its current frame; that wait must not
+    // freeze the window when another file is chosen.
+    if (player) std::thread([p = player] { rv_player_close(p); }).detach();
     player = nullptr;
     queue.clear();
     shownTime = newestTime = -1;
@@ -58,6 +64,7 @@ void Playback::unload() {
 }
 
 void Playback::openFile(int index, double seconds) {
+    RV_TRACE_SCOPE("Playback::openFile");
     closePlayer();
     current = index;
     const GroupFile &f = group_.files[index];
@@ -65,6 +72,7 @@ void Playback::openFile(int index, double seconds) {
     player = rv_player_open(f.path.toUtf8().constData(), std::max(0.0, seconds));
     clockBase = seconds;
     waitFirst = true;
+    seekLatency.start();
     if (player) pumpTimer.start();
 }
 
@@ -76,9 +84,12 @@ void Playback::restartDecoder(double seconds) {
     endOfStream = false;
     clockBase = seconds;
     waitFirst = true;
+    seekLatency.start();
 }
 
 double Playback::seek(double p, bool force) {
+    RV_TRACE_SCOPE("Playback::seek");
+    ++seekCount;
     lastSeekPos = p;
     if (group_.isEmpty() || p < 0 || p > 1) return -1;
     const int k = group_.fileAt(p);
@@ -140,8 +151,9 @@ double Playback::position() {
     if (!player || current < 0) return lastSeekPos;
     const double t = state_ == State::Running ? clockSeconds() : (shownTime >= 0 ? shownTime : clockBase);
     // PV-005 step 4: at the end of a file the group continues with the next one, gaps skipped.
-    if (state_ == State::Running && endOfStream && queue.empty() && t >= fileSeconds() - 0.05 &&
-        current + 1 < group_.files.size()) {
+    const bool atEnd = (endOfStream && queue.empty() && t >= fileSeconds() - 0.05) ||
+                       (trimTail > 0 && t >= fileSeconds() - trimTail);
+    if (state_ == State::Running && atEnd && current + 1 < group_.files.size()) {
         const double next = std::max(group_.files[current + 1].pStart, group_.files[current].pFinish);
         seek(next);
         return lastSeekPos;
@@ -176,6 +188,7 @@ void Playback::stepBack() {
 }
 
 void Playback::pump() {
+    RV_TRACE_SCOPE("Playback::pump");
     if (!player) return;
     const uint64_t generation = rv_player_generation(player);
     RvEvent e;
@@ -216,6 +229,7 @@ void Playback::pump() {
         waitFirst = false;
         clockBase = d.time;
         clock.restart();
+        if (TraceScope::enabled()) std::fprintf(stderr, "seek: first frame after %lld ms\n", seekLatency.elapsed());
         show(std::move(d));
         return;
     }

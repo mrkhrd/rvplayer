@@ -44,6 +44,12 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *e) override;
+    // VCL delivers mouse input only to the control under the cursor; accepting it here keeps Qt
+    // from passing it on to the parents (which may have the same handlers).
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void mouseDoubleClickEvent(QMouseEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
 
 private:
     Bevel outer = Bevel::Raised;
@@ -88,6 +94,10 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void mouseDoubleClickEvent(QMouseEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
 
 private:
     QPixmap pix;

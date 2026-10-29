@@ -5,15 +5,20 @@
 
 #include "core/Format.h"
 #include "core/Playback.h"
-#include "map/MapView.h"
+#include "forms/FormDetails.h"
+#include "core/Trace.h"
+#include "filelist/FileListView.h"
 #include "i18n/Lang.h"
+#include "map/MapView.h"
 #include "vcl/AlignLayout.h"
 #include "video/VideoView.h"
-#include "filelist/FileListView.h"
 
 #include <QAbstractButton>
 #include <QAction>
 #include <QCheckBox>
+#include <QCursor>
+#include <QFileInfo>
+#include <QLocale>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTimer>
@@ -21,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 using vcl::Align;
 
@@ -62,9 +68,10 @@ void MainForm::setupPlayback() {
 
 // PV-010: the selected item becomes the current one; nothing is opened yet.
 void MainForm::loadGroup(const Group &g) {
+    RV_TRACE_SCOPE("MainForm::loadGroup");
     stopPlayback(false);
     playback->setGroup(g);
-    moving.load(g);
+    moving.load(g, trackOptions());
     setButton(this, "ButtonPlay", !g.isEmpty());
     playSpeedEnabled = !g.isEmpty();
     zoomL = 0;
@@ -83,6 +90,7 @@ double MainForm::currentPosition() {
 
 // PV-006.
 void MainForm::seekTo(double p, bool callTimer, bool force) {
+    RV_TRACE_SCOPE("MainForm::seekTo");
     pinGet = false;
     mapRecentre = true;
     const double reached = playback->seek(p, force);
@@ -92,6 +100,7 @@ void MainForm::seekTo(double p, bool callTimer, bool force) {
 
 // PV-013.
 void MainForm::ButtonPlayClick(vcl::Event *) {
+    RV_TRACE_SCOPE("MainForm::ButtonPlayClick");
     auto *play = find<QToolButton>("ButtonPlay");
     if (!play || playback->group().isEmpty()) return;
     if (!playback->active()) {
@@ -136,6 +145,7 @@ void MainForm::ButtonStopClick(vcl::Event *) {
 
 // PV-017.
 void MainForm::stopPlayback(bool clearSelection) {
+    RV_TRACE_SCOPE("MainForm::stopPlayback");
     if (QTimer *t = timer("Timer")) t->stop();
     if (auto *play = find<QToolButton>("ButtonPlay")) {
         play->setChecked(false);
@@ -168,6 +178,7 @@ void MainForm::stopPlayback(bool clearSelection) {
     if (MapView *m = mapView()) m->exec("ClearPath(); ClearMarkers(); ClearMarkersAB();");
     setupZoomBar();
     clearGauges();
+    hideDetails();
     FormResize(nullptr);
 }
 
@@ -189,6 +200,7 @@ void MainForm::updateCaption() {
 
 // PV-021…PV-026.
 void MainForm::TimerTimer(vcl::Event *e) {
+    RV_TRACE_SCOPE("MainForm::TimerTimer");
     if (!isVisible()) return;
     const Group &g = playback->group();
     double p = currentPosition();
@@ -240,6 +252,12 @@ void MainForm::TimerTimer(vcl::Event *e) {
     }
     position = p;
     drawCursors();
+    // The details mini-graph follows the position (TimerTimer L1359).
+    if (details && detailsWidth > 0 && detailsColumns > 1) {
+        const double from = detailsCenter - detailsWidth / 2;
+        const double f = (p - from) / detailsWidth;
+        details->drawCursor(f >= 0 && f <= 1 ? int(std::lround(f * (detailsColumns - 1))) : -1);
+    }
 }
 
 // GM-080…GM-083 with Q-14 (no reading without data) and Q-15 (needle kept on the dial).
@@ -296,8 +314,10 @@ void MainForm::ImageSeekMouseMove(vcl::Event *e) {
     if (pinGet) {
         pinGetValue = seek.progressAt(x);
         TimerTimer(nullptr);
+        showDetails(w, x);
         return;
     }
+    showDetails(w, x);
     const bool onPin = w == widget("ImageSeek") && !playback->group().isEmpty() &&
                        std::abs(x - seek.xOf(lastPosition)) < seek.pinH() / 2;
     w->setCursor(onPin ? Qt::PointingHandCursor : Qt::ArrowCursor);
@@ -377,6 +397,7 @@ void MainForm::setupZoomBar() {
     bar->setPageStep(page);
     bar->setValue(max > 0 ? int(std::lround(max * zoomL / std::max(1e-9, 1 - width))) : 0);
     bar->setEnabled(width < 0.999 && max > 0);
+    drawMarkersAB();
 }
 
 // PV-043: zoom in or out around the current position.
@@ -405,6 +426,7 @@ void MainForm::ScrollBarZoomChange(vcl::Event *) {
         zoomL = double(bar->value()) / bar->maximum() * (1 - width);
         zoomR = zoomL + width;
     }
+    drawMarkersAB();
     FormResize(nullptr);
 }
 
@@ -472,6 +494,77 @@ void MainForm::N_View_Refresh_SlowClick(vcl::Event *e) {
     QTimer *t = timer("Timer");
     if (!t) return;
     if (isChecked("N_View_Refresh_Slow")) t->setInterval(1000);
-    else if (isChecked("N_View_Refresh_Normal")) t->setInterval(300);
+    else if (isChecked("N_View_Refresh_Norm")) t->setInterval(300);
     else t->setInterval(100);
+}
+
+// GM-120…GM-122.
+void MainForm::showDetails(QWidget *image, int x) {
+    const Group &g = playback->group();
+    QWidget *panel = widget("PanelBottomGraphics");
+    if (!panel || !isChecked("N_View_Details") || isChecked("N_FullScreen") || g.isEmpty()) {
+        hideDetails();
+        return;
+    }
+    const int W = panel->width();
+    if (x < seek.border() - 5 || x > W - seek.border() + 5) {
+        hideDetails();
+        return;
+    }
+    if (!details) {
+        details = new FormDetails(this);
+        if (!details->load(":/original/forms/TFORMDETAILS.dfm")) {
+            delete details;
+            details = nullptr;
+            return;
+        }
+    }
+    const double p = seek.progressAt(x);
+    const int k = g.fileAt(p);
+    FormDetails::Content c;
+    c.file = QFileInfo(g.files[k].path).fileName();
+    if (g.files.size() > 1) c.file = QStringLiteral("[%1] ").arg(k + 1) + c.file;
+    const QDateTime when = fmt::toQDateTime(g.timeAt(p) + tzShift);
+    c.systemTime = QLocale::system().toString(when.date(), QLocale::ShortFormat) + " " + when.time().toString("HH:mm:ss");
+    const qint64 ms = qint64(std::lround(g.elapsedSeconds(p) * 1000));
+    c.videoTime = QStringLiteral("%1:%2:%3.%4")
+                      .arg(ms / 3600000)
+                      .arg(ms / 60000 % 60, 2, 10, QChar('0'))
+                      .arg(ms / 1000 % 60, 2, 10, QChar('0'))
+                      .arg(ms % 1000, 3, 10, QChar('0'));
+    c.value = moving.at(g.timeAt(p));
+    c.british = isChecked("N_View_Measu_British");
+    c.profile = profile() == Profile::Video ? FormDetails::Profile::Video
+                : profile() == Profile::Gps ? FormDetails::Profile::Gps
+                                            : FormDetails::Profile::GpsG;
+    // The mini-graph covers about 20 timeline pixels around the mouse, for a graph image only.
+    detailsWidth = (zoomR - zoomL) * 20 / std::max(32, W - 2 * seek.border());
+    detailsCenter = p;
+    detailsColumns = 0;
+    const double minZoom = 0.5 / (1 + g.duration * 86400.0);
+    for (const GraphImage &gi : graphs) {
+        if (gi.image != image || detailsWidth < minZoom) continue;
+        detailsColumns = std::max(2, details->width() - 2 - 40);
+        c.graph = gi.graphic.kind();
+        if (QAction *a = action(gi.graphic.menuItem())) c.graphName = a->text();
+        c.bins = moving.bins(gi.graphic.kind(), g.timeAt(p - detailsWidth / 2), g.timeAt(p + detailsWidth / 2), detailsColumns,
+                             c.british);
+        const double f = (lastPosition - (p - detailsWidth / 2)) / detailsWidth;
+        c.cursorColumn = f >= 0 && f <= 1 ? int(std::lround(f * (detailsColumns - 1))) : -1;
+    }
+    const QPoint top = panel->mapToGlobal(QPoint(0, 0));
+    details->popup(c, QCursor::pos(), top.y(), top.y() + panel->height());
+}
+
+void MainForm::hideDetails() {
+    if (details) details->popdown();
+    detailsWidth = 0;
+}
+
+void MainForm::OnImageMouseLeave(vcl::Event *) {
+    hideDetails();
+}
+
+void MainForm::PopupMenuGraphicsPopup(vcl::Event *) {
+    hideDetails();
 }

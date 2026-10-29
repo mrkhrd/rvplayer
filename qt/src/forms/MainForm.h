@@ -13,6 +13,15 @@
 #include <vector>
 
 class FileListView;
+class FormAbout;
+class FormCropping;
+class FormRepair;
+class FormGPSLog;
+namespace gpsfiles {
+struct Source;
+}
+class FormDetails;
+class FormWhatsNew;
 class QKeyEvent;
 class QWheelEvent;
 class FileManager;
@@ -23,6 +32,8 @@ class VideoView;
 
 class MainForm : public vcl::Form {
     Q_OBJECT
+    friend class MainFormTest;  // qt/tests drive the form through its internals
+
 public:
     explicit MainForm(QWidget *parent = nullptr);
 
@@ -53,6 +64,40 @@ public:
     Q_INVOKABLE void N_FileList_Ungroup_AllClick(vcl::Event *e);
     Q_INVOKABLE void N_FileList_Group_AutoClick(vcl::Event *e);
     Q_INVOKABLE void N_FileList_ShowExplorerClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_PropertyClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_DelDiskClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_DelDiskAllClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Group_WithClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_CopyClick(vcl::Event *e);
+
+    // Commands (MainForm_Commands.cpp)
+    Q_INVOKABLE void N_Help_AboutClick(vcl::Event *e);
+    Q_INVOKABLE void N_Help_WhatsNewClick(vcl::Event *e);
+    Q_INVOKABLE void N_Help_Site_BrandClick(vcl::Event *e);
+    Q_INVOKABLE void N_Help_Site_MyClick(vcl::Event *e);
+    Q_INVOKABLE void N_Settings_ClearClick(vcl::Event *e);
+    Q_INVOKABLE void N_Playback_Save_FrameClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Movie_OverlapClick(vcl::Event *e);
+    Q_INVOKABLE void N_File_Save_VideoClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_SaveClick(vcl::Event *e);
+    Q_INVOKABLE void N_File_Repair_VideoClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_RepairClick(vcl::Event *e);
+
+    // GPS tracks (MainForm_Track.cpp)
+    Q_INVOKABLE void N_File_Convert_GPSClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Track_GPSLogClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Track_SetClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Track_MoveClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Track_ExportClick(vcl::Event *e);
+    Q_INVOKABLE void N_FileList_Track_GoogleClick(vcl::Event *e);
+
+    // Coordinates (MainForm_Coords.cpp)
+    Q_INVOKABLE void N_View_Coord_FlipXClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Coord_ShiftXClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_MarkerURLSetupClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_MarkerURLOpenClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Coord_CopySetupClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Coord_CopyClick(vcl::Event *e);
     Q_INVOKABLE void ListViewSelectItem(vcl::Event *e);
     Q_INVOKABLE void ListViewClick(vcl::Event *e);
     Q_INVOKABLE void ListViewDblClick(vcl::Event *e);
@@ -61,6 +106,8 @@ public:
 
     // Map
     Q_INVOKABLE void N_View_GoogleMapsClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Maps_OpenKMLClick(vcl::Event *e);
+    Q_INVOKABLE void N_View_Maps_PostActionClick(vcl::Event *e);
 
     // View, video zoom, full screen (MainForm_View.cpp)
     Q_INVOKABLE void DoTranslate(vcl::Event *e);
@@ -93,6 +140,8 @@ public:
     Q_INVOKABLE void ImageSeekMouseDown(vcl::Event *e);
     Q_INVOKABLE void ImageSeekMouseMove(vcl::Event *e);
     Q_INVOKABLE void ImageSeekMouseUp(vcl::Event *e);
+    Q_INVOKABLE void OnImageMouseLeave(vcl::Event *e);
+    Q_INVOKABLE void PopupMenuGraphicsPopup(vcl::Event *e);
     Q_INVOKABLE void ButtonZoomInClick(vcl::Event *e);
     Q_INVOKABLE void ScrollBarZoomChange(vcl::Event *e);
     Q_INVOKABLE void N_View_Time_SetAClick(vcl::Event *e);
@@ -150,6 +199,12 @@ private:
     void updateGauges(const MovingValue &v);
     void setupZoomBar();
     void pauseForStep();
+    // GM-120: the details popup for the timeline position under the mouse.
+    void showDetails(QWidget *image, int x);
+    void hideDetails();
+    FormDetails *details = nullptr;
+    double detailsCenter = -1, detailsWidth = 0;  // window of its mini-graph (progress)
+    int detailsColumns = 0;
 
     Playback *playback = nullptr;
     VideoView *video = nullptr;
@@ -170,6 +225,14 @@ private:
     void showTimelineInFullScreen(bool show);
     bool routeWheel(QWheelEvent *e);
     bool extraKey(QKeyEvent *k);
+    class AppEventFilter : public QObject {
+    public:
+        explicit AppEventFilter(MainForm *f) : QObject(f), form(f) {}
+        bool eventFilter(QObject *watched, QEvent *ev) override;
+
+    private:
+        MainForm *form;
+    };
 
     double tzShift = 0;  // GM-093, days added to displayed clock times
     double videoZoom = 1, videoDx = 0.5, videoDy = 0.5;  // PV-060
@@ -185,6 +248,13 @@ private:
     void setRoute();     // GM-160
     void redrawRoute();  // GM-161
     void updateMapMarker(const MovingValue &v, bool timerTick);  // GM-165, GM-167
+    void drawMarkersAB();                                        // GM-168
+    // FL-055: routes of several rows while choosing them in the Grouping dialog.
+    void previewRoutes(const QList<int> &rows, const QSet<int> &highlighted);
+    void previewTrackFiles(const QStringList &paths, const QList<bool> &selected);
+    void drawPreview(const QStringList &keys, const QList<bool> &selected);
+    QHash<QString, QVector<QVector<GpsSample>>> previewCache;
+    bool mapWheel(int delta, QPoint global);                     // GM-170
 
     struct MapViewport {
         double top = 0, left = 0, bottom = 0, right = 0;  // degrees
@@ -215,6 +285,20 @@ private:
     void addFiles(const QStringList &paths);
     bool isNowPlaying(int row) const;
     FileManager *fileManager = nullptr;
+    void deleteRowFromDisk(int row);
+    MovingInfo::Options trackOptions() const;
+    void reloadCurrentItem();
+    QString fillCoordinatesTemplate(QString t, const MovingValue &v) const;
+    QString copyTemplateDefault() const;
+    QPointer<FormAbout> aboutForm;
+    QPointer<FormWhatsNew> whatsNewForm;
+    QPointer<FormCropping> croppingForm;
+    FormCropping *cropping();
+    QPointer<FormRepair> repairForm;
+    FormRepair *repairing();
+    QPointer<FormGPSLog> gpsLogForm;
+    FormGPSLog *gpsLog();
+    QVector<gpsfiles::Source> selectionGps() const;  // FL-070
     QString lastSelectedName;  // FL-012
     QList<QPair<QToolButton *, QAction *>> fileListButtons;
 };

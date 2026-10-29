@@ -1,24 +1,17 @@
 // RV Player (Qt): a faithful reimplementation of Registrator Viewer's windows on top of the
 // Rust core (crates/rv-ffi).
 
+#include "app/Startup.h"
 #include "forms/MainForm.h"
-#include "i18n/Lang.h"
-#include "map/MapView.h"
 
 #include <QApplication>
 #include <QMessageBox>
 #include <cstdio>
 
 int main(int argc, char *argv[]) {
-    MapView::registerScheme();
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);  // required by Qt WebEngine
-    QApplication app(argc, argv);
-    QApplication::setApplicationName("RV Player");
-    // The native Windows look of the original's themed VCL controls (not Qt's Windows 11 style).
-    QApplication::setStyle("windowsvista");
-    qRegisterMetaType<vcl::Event *>();
-
-    Lang::instance().load();
+    app::beforeApplication();
+    QApplication a(argc, argv);
+    app::afterApplication(a);
 
     MainForm form;
     if (!form.load(":/original/forms/TFORMMAIN.dfm")) {

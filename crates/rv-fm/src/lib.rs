@@ -2,9 +2,8 @@
 //! files and GPS logs, previews them on a background thread, groups consecutive segments and
 //! keeps the list sorted.
 //!
-//! Not implemented yet (needs a GPS log parser): reading sidecar / pool logs. The sidecar
-//! finder and the log pool are in place; [`gps::DefaultGpsLoader`] returns `None` for logs, so
-//! only GPS tracks embedded in videos are used. Plug a parser in via
+//! GPS data comes from [`gps::DefaultGpsLoader`]: tracks embedded in videos and sidecar / pool
+//! logs in the original's formats (`rv_core::gps`). Another loader can be plugged in via
 //! [`FileManager::with_loader`].
 
 pub mod gps;

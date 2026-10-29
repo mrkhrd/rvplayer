@@ -21,6 +21,8 @@ public:
     void writeString(const QString &name, const QString &v);
     void remove(const QString &name);
     bool contains(const QString &name) const;
+    // SH-024: every value is removed.
+    void clear();
 
 private:
     Settings();

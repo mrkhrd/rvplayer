@@ -55,3 +55,8 @@ void Settings::remove(const QString &name) {
 bool Settings::contains(const QString &name) const {
     return store->contains(name);
 }
+
+void Settings::clear() {
+    store->clear();
+    store->sync();
+}

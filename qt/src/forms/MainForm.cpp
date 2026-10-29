@@ -1,6 +1,8 @@
 #include "MainForm.h"
 
+#include "core/Playback.h"
 #include "core/Settings.h"
+#include "core/Trace.h"
 #include "i18n/Lang.h"
 #include "map/MapView.h"
 #include "vcl/AlignLayout.h"
@@ -23,6 +25,18 @@ using vcl::Align;
 
 MainForm::MainForm(QWidget *parent) : vcl::Form(parent) {}
 
+bool MainForm::AppEventFilter::eventFilter(QObject *watched, QEvent *ev) {
+    if (ev->type() != QEvent::Wheel && ev->type() != QEvent::KeyPress) return false;
+    auto *w = qobject_cast<QWidget *>(watched);
+    QWidget *active = QApplication::activeWindow();
+    QWidget *fs = form->fullScreen;
+    if (!w || w->isWindow() || (w->window() != form && (!fs || w->window() != fs))) return false;
+    // The wheel goes to the window under the cursor; keys only to the active window.
+    if (ev->type() == QEvent::Wheel) return form->routeWheel(static_cast<QWheelEvent *>(ev));
+    if (active != form && (!fs || active != fs)) return false;
+    return form->extraKey(static_cast<QKeyEvent *>(ev));
+}
+
 // --- Start-up ---------------------------------------------------------------------------------
 
 void MainForm::FormCreate(vcl::Event *) {
@@ -40,6 +54,7 @@ void MainForm::FormCreate(vcl::Event *) {
     createFileListMenuButtons();
     setupListView();
     setupPlayback();
+    if (QWidget *seekImage = widget("ImageSeek")) bindHandler(seekImage, "OnMouseLeave", "OnImageMouseLeave");
 
     // GM-011: saved panel sizes; the ads and analytics browsers are never shown (decisions Q-1).
     Settings &s = Settings::instance();
@@ -60,10 +75,16 @@ void MainForm::FormCreate(vcl::Event *) {
     }
 
     setupMapMenu();
+    playback->setTrimTail(s.readString("trimTailMS", "0").toDouble() / 1000.0);
+    if (QAction *brand = action("N_Help_Site_Brand")) brand->setVisible(false);
+    if (QAction *site = action("N_Help_Site_My")) site->setVisible(!Lang::instance().trDef("MySite", QString()).isEmpty());
     if (auto *volume = find<QSlider>("TrackBarVolume")) volume->setValue(s.readInt("volume", 100));  // L984
     N_View_TimeZone_LocalClick(nullptr);
     N_View_Refresh_SlowClick(nullptr);
-    qApp->installEventFilter(this);  // wheel routing and extra keys (FormMouseWheel, ApplicationEvents)
+    // Wheel routing and extra keys see every event of the application (FormMouseWheel,
+    // ApplicationEvents). A separate filter object: the form itself must stay a per-control filter,
+    // or each control's handlers would run twice.
+    qApp->installEventFilter(new AppEventFilter(this));
     // GM-012: start-up handler order (Sender = nil).
     N_View_FileListClick(nullptr);
     N_View_Profile_GPSClick(nullptr);
@@ -82,15 +103,6 @@ bool MainForm::eventFilter(QObject *watched, QEvent *ev) {
     if (watched == fullScreen && ev->type() == QEvent::Close) {
         close();  // PV-074: closing the full-screen window closes the application
         return false;
-    }
-    if (ev->type() == QEvent::Wheel || ev->type() == QEvent::KeyPress) {
-        auto *w = qobject_cast<QWidget *>(watched);
-        QWidget *active = QApplication::activeWindow();
-        if (w && w->isWindow() == false && (w->window() == this || (fullScreen && w->window() == fullScreen)) &&
-            (active == this || (fullScreen && active == fullScreen))) {
-            if (ev->type() == QEvent::Wheel && routeWheel(static_cast<QWheelEvent *>(ev))) return true;
-            if (ev->type() == QEvent::KeyPress && extraKey(static_cast<QKeyEvent *>(ev))) return true;
-        }
     }
     if (ev->type() == QEvent::Resize && watched->isWidgetType() && watched->objectName() == "PanelVideo") layoutVideo();
     if (ev->type() == QEvent::Resize && watched->isWidgetType()) {
@@ -270,6 +282,7 @@ void MainForm::N_View_Profile_GPSClick(vcl::Event *e) {
 
 // GM-018: window resize.
 void MainForm::FormResize(vcl::Event *) {
+    RV_TRACE_SCOPE("MainForm::FormResize");
     if (QWidget *pc = widget("PanelControl"); pc && !pc->isHidden()) alignControlPanel();
 
     // Step 5: the map keeps its fraction of the column height.

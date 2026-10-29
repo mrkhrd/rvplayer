@@ -113,15 +113,17 @@ int AlignLayout::count() const {
 }
 
 QSize AlignLayout::sizeHint() const {
-    return designClient;
+    return designClient.grownBy(contentsMargins());
 }
 
 QSize AlignLayout::minimumSize() const {
     return {0, 0};
 }
 
-void AlignLayout::setGeometry(const QRect &r) {
-    QLayout::setGeometry(r);
+void AlignLayout::setGeometry(const QRect &full) {
+    QLayout::setGeometry(full);
+    // A form's BorderWidth (the contents margins) is outside its client area, as in VCL.
+    const QRect r = full.marginsRemoved(contentsMargins());
     QRect area = r.marginsRemoved(alignMargins);
 
     // VCL processes alignments in this order; within one alignment, controls are ordered by
@@ -180,6 +182,13 @@ void AlignLayout::setGeometry(const QRect &r) {
         QWidget *w = e.item->widget();
         if (!w || w->isHidden()) continue;
         QRect g = e.rect;
+        // TLabel.AutoSize: the label is as large as its text; a right-justified one keeps its right edge.
+        if (w->property("vclAutoSize").toBool()) {
+            const QSize hint = w->sizeHint();
+            if (w->property("vclRightJustify").toBool()) g.setLeft(g.right() + 1 - hint.width());
+            else g.setWidth(hint.width());
+            g.setHeight(std::max(g.height(), hint.height()));
+        }
         const int dw = r.width() - designClient.width();
         const int dh = r.height() - designClient.height();
         if (e.anchors.right) {
@@ -194,7 +203,7 @@ void AlignLayout::setGeometry(const QRect &r) {
         } else if (!e.anchors.top) {
             g.moveTop(g.top() + dh / 2);
         }
-        e.item->setGeometry(g.translated(r.topLeft()));
+        e.item->setGeometry(g.translated(fromWidgetOrigin ? QPoint(0, 0) : r.topLeft()));
     }
 }
 

@@ -22,6 +22,13 @@ struct GroupFile {
     bool locked = false;
     int width = 0, height = 0;
     int gop = 0;
+    double fps = 0;
+    qint64 size = 0;         // bytes
+    qint64 durationMs = 0;
+    TDateTime fsCreation = 0, fsWrite = 0;
+    QString infoPath;        // GPS found inside the video or in a same-name sidecar
+    int gpsState = 0;        // 0 none, 1 points without a fix, 2 valid
+    QString gpsLogPath;      // a trip log assigned by time
     TDateTime start() const { return finish - duration; }
 };
 

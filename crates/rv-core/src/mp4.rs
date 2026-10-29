@@ -40,7 +40,8 @@ pub struct Track {
     chunk_offsets: Vec<u64>,
     /// `stsc` runs: (first chunk, 1-based; samples per chunk).
     sample_to_chunk: Vec<(u32, u32)>,
-    /// `stts` runs: (sample count, sample delta).
+    /// `stts` runs: (sample count, sample delta). Deltas are signed: some writers (the
+    /// original app among them) store a negative step as its 32-bit two's complement.
     time_to_sample: Vec<(u32, u32)>,
     /// `ctts` runs: (sample count, composition offset).
     composition_offsets: Vec<(u32, i32)>,
@@ -107,7 +108,8 @@ impl Track {
             .composition_offsets
             .iter()
             .flat_map(|&(n, o)| std::iter::repeat_n(o, n as usize));
-        let mut ticks = 0u64;
+        // Signed: a delta >= 2^31 is a negative step, not a huge forward jump.
+        let mut ticks = 0i64;
         let mut index = 0usize;
         for (chunk, &chunk_offset) in self.chunk_offsets.iter().enumerate() {
             let chunk_no = chunk as u32 + 1;
@@ -122,7 +124,7 @@ impl Track {
                 let Some(&size) = self.sample_sizes.get(index) else {
                     return out;
                 };
-                let presentation = ticks as i64 + i64::from(cts.next().unwrap_or(0));
+                let presentation = ticks + i64::from(cts.next().unwrap_or(0));
                 let time = if self.timescale == 0 {
                     0.0
                 } else {
@@ -139,7 +141,7 @@ impl Track {
                     sync,
                 });
                 offset += u64::from(size);
-                ticks += u64::from(deltas.next().unwrap_or(0));
+                ticks = ticks.saturating_add(i64::from(deltas.next().unwrap_or(0) as i32));
                 index += 1;
             }
         }
@@ -477,6 +479,27 @@ mod tests {
         );
         let other = [be(&[0, 1]), mk(b"mp4a", &[0; 40])].concat();
         assert_eq!(video_codec_config(&other), None);
+    }
+
+    #[test]
+    fn negative_stts_delta_steps_back() {
+        // Written by the original app: the first delta is -45 ticks stored as 2^32 - 45.
+        let payloads = vec![b"aaaa".to_vec(), b"bbbb".to_vec(), b"cccc".to_vec()];
+        let mut file = movie_with_track(b"data", b"RVMI", 50, &payloads);
+        let stts = be(&[0, 1, 3, 50]);
+        let at = file.windows(stts.len()).position(|w| w == stts.as_slice()).unwrap();
+        let mut t = Track { timescale: 50, ..Default::default() };
+        t.sample_sizes = vec![4, 4, 4];
+        t.chunk_offsets = vec![0];
+        t.sample_to_chunk = vec![(1, 3)];
+        t.time_to_sample = vec![(1, (-45i32) as u32), (2, 50)];
+        let times: Vec<f64> = t.samples().iter().map(|s| s.time).collect();
+        assert_eq!(times, [0.0, -0.9, 0.1]);
+        // through the reader as well: a run whose delta is 2^32 - 45
+        file[at..at + stts.len()].copy_from_slice(&be(&[0, 1, 3, (-45i32) as u32]));
+        let movie = read_movie(&mut io::Cursor::new(&file)).unwrap();
+        let times: Vec<f64> = movie.tracks[0].samples().iter().map(|s| s.time).collect();
+        assert_eq!(times, [0.0, -0.9, -1.8]);
     }
 
     #[test]
