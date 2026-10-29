@@ -8,7 +8,7 @@ rem                     (stages cached on their own, see .github/workflows)
 setlocal
 set QTMINOR=6.10
 set QTVER=6.10.3
-set QTMD5=53f04564a696246c3e115028affb6bea
+set QTMD5=70e0ea03caf4f5b2e44e2aaea28c9655
 set UPXVER=5.3.0
 set UPXSHA=d127996c76615e431be810e9c8d2910dbe3dd400600c5c0c50276fc5a17a9705
 set DEPS=%~dp0..\deps
@@ -16,8 +16,6 @@ set DIST=%~dp0..\dist
 set QTSRC=%DEPS%\qt-src\qtbase-everywhere-src-%QTVER%
 set QTSTATIC=%DEPS%\qt-static
 set UPXEXE=%DEPS%\upx\upx-%UPXVER%-win64\upx.exe
-rem Windows' own tar: a GNU tar earlier on the PATH (Git's) takes "D:\..." for a remote host.
-set TAR=%SystemRoot%\System32\tar.exe
 rem Downloads give up instead of hanging, and retry a failed connection.
 set CURL=curl -fL --retry 3 --connect-timeout 30 --max-time 1800
 
@@ -30,17 +28,17 @@ if exist "%QTSTATIC%\lib\cmake\Qt6\Qt6Config.cmake" goto qtdone
 if exist "%QTSRC%\configure.bat" goto qtsource
 echo == Downloading the Qt %QTVER% base module source
 mkdir "%DEPS%\qt-src" 2>nul
-%CURL% -o "%DEPS%\qt-src\qtbase.tar.xz" https://download.qt.io/official_releases/qt/%QTMINOR%/%QTVER%/submodules/qtbase-everywhere-src-%QTVER%.tar.xz || exit /b 1
-call :check "%DEPS%\qt-src\qtbase.tar.xz" MD5 %QTMD5% || exit /b 1
-echo == Unpacking it
-"%TAR%" -xf "%DEPS%\qt-src\qtbase.tar.xz" -C "%DEPS%\qt-src" || exit /b 1
-del "%DEPS%\qt-src\qtbase.tar.xz"
+%CURL% -o "%DEPS%\qt-src\qtbase.zip" https://download.qt.io/official_releases/qt/%QTMINOR%/%QTVER%/submodules/qtbase-everywhere-src-%QTVER%.zip || exit /b 1
+call :check "%DEPS%\qt-src\qtbase.zip" MD5 %QTMD5% || exit /b 1
+call :unzip "%DEPS%\qt-src\qtbase.zip" "%DEPS%\qt-src" || exit /b 1
+del "%DEPS%\qt-src\qtbase.zip"
 :qtsource
 echo == Configuring the static Qt
 mkdir "%DEPS%\qt-static-build" 2>nul
 pushd "%DEPS%\qt-static-build"
+rem -unity-build: sources compiled in batches, about half the time on a few cores (CI).
 call "%QTSRC%\configure.bat" -prefix "%QTSTATIC%" -static -static-runtime -release -nomake examples ^
-    -nomake tests -no-dbus -no-icu -opengl desktop -no-feature-sql || (popd & exit /b 1)
+    -nomake tests -no-dbus -no-icu -opengl desktop -no-feature-sql -unity-build || (popd & exit /b 1)
 echo == Building the static Qt
 cmake --build . --parallel || (popd & exit /b 1)
 cmake --install . || (popd & exit /b 1)
@@ -71,7 +69,7 @@ echo == Downloading UPX %UPXVER%
 mkdir "%DEPS%\upx" 2>nul
 %CURL% -o "%DEPS%\upx\upx.zip" https://github.com/upx/upx/releases/download/v%UPXVER%/upx-%UPXVER%-win64.zip || exit /b 1
 call :check "%DEPS%\upx\upx.zip" SHA256 %UPXSHA% || exit /b 1
-"%TAR%" -xf "%DEPS%\upx\upx.zip" -C "%DEPS%\upx" || exit /b 1
+call :unzip "%DEPS%\upx\upx.zip" "%DEPS%\upx" || exit /b 1
 del "%DEPS%\upx\upx.zip"
 :upxdone
 echo == Packing
@@ -80,6 +78,13 @@ if exist "%DIST%\RVPlayer.exe" del "%DIST%\RVPlayer.exe"
 "%UPXEXE%" --best --lzma --compress-exports=0 -q -o "%DIST%\RVPlayer.exe" "%~dp0build-static\rvplayer.exe" || exit /b 1
 echo Single file: %DIST%\RVPlayer.exe
 exit /b 0
+
+rem :unzip <zip> <folder>: .NET's own unzip. tar (Windows' or Git's) never finished unpacking the
+rem Qt source on GitHub's Windows Server machines.
+:unzip
+echo == Unpacking %~nx1
+powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%~1', '%~2')"
+exit /b %errorlevel%
 
 rem :check <file> <algorithm> <expected hash>
 :check
