@@ -190,6 +190,7 @@ void MainFormTest::startupPlaysFirstRow() {
     QTRY_VERIFY_WITH_TIMEOUT(form->playback->state() == Playback::State::Running, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(!form->video->frameSize().isEmpty(), 5000);
     QCOMPARE(list()->selectedRows(), QList<int>{0});
+    QTRY_VERIFY2(form->windowTitle().endsWith("  -  RV Player"), qPrintable(form->windowTitle()));  // Q-29
 }
 
 // PV-010/PV-011: selecting a row loads it; the click opens it paused with its first frame.
@@ -414,13 +415,18 @@ void MainFormTest::aboutShowsCredits() {
     form->aboutForm->close();
 }
 
-// SF-WHATSNEW-*: the release notes of the original, in the current language.
+// SF-WHATSNEW-*, Q-30: this program's notes, then the original's, in the current language.
 void MainFormTest::whatsNewShowsNotes() {
     form->action("N_Help_WhatsNew")->trigger();
     QVERIFY(form->whatsNewForm && form->whatsNewForm->isVisible());
+    QVERIFY(form->whatsNewForm->windowTitle().endsWith("RV Player " + QApplication::applicationVersion()));
     const QString text = form->whatsNewForm->find<QPlainTextEdit>("Memo")->toPlainText();
-    QVERIFY(text.startsWith("Registrator Viewer 6.0.0.22"));
-    QVERIFY(text.size() > 1000);
+    const qsizetype ours = text.indexOf("RV Player v" + QApplication::applicationVersion());
+    const qsizetype original = text.indexOf("Registrator Viewer 6.0.0.22");
+    QVERIFY2(ours >= 0 && ours < 100, qPrintable(text.left(200)));
+    QVERIFY(original > ours);
+    QVERIFY(text.indexOf("v6.1 | 2015.08.01") > original);
+    shot(form->whatsNewForm, "whatsnew");
     form->whatsNewForm->close();
 }
 

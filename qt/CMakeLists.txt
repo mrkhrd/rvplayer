@@ -103,11 +103,11 @@ qt_add_resources(rvplayer_lib "original"
     BASE ${RV_ROOT}/assets/original
     FILES ${RV_ORIGINAL_ASSETS})
 
-# --- The application's own icon (assets/app/make_icon.py draws it).
+# --- The application's own icon (assets/app/make_icon.py draws it) and release notes.
 qt_add_resources(rvplayer_lib "app"
     PREFIX "/app"
     BASE ${RV_ROOT}/assets/app
-    FILES ${RV_ROOT}/assets/app/rvplayer.ico)
+    FILES ${RV_ROOT}/assets/app/rvplayer.ico ${RV_ROOT}/assets/app/whatsnew_en.txt ${RV_ROOT}/assets/app/whatsnew_ru.txt)
 
 # The program file's icon and version information.
 set(RV_VERSION 0.1.0)

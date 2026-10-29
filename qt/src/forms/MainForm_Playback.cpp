@@ -160,7 +160,7 @@ void MainForm::stopPlayback(bool clearSelection) {
     playback->setGroup(Group());
     moving.clear();
     if (video) video->clear();
-    setWindowTitle(QStringLiteral("Registrator Viewer"));
+    setWindowTitle(QStringLiteral("RV Player"));
     // ClearAll.
     if (auto *loop = find<QCheckBox>("CheckBoxLoop")) loop->setChecked(false);
     setChecked("N_View_Time_LoopAB", false);
@@ -194,7 +194,7 @@ void MainForm::updateCaption() {
         c += "    " + fmt::speed(track / secs * 3.6, british) +
              Lang::instance().tr(british ? "MilesPerH" : "KmetersPerH");
     }
-    setWindowTitle(c + "  -  Registrator Viewer");
+    setWindowTitle(c + "  -  RV Player");
 }
 
 // PV-021…PV-026.
