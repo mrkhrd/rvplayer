@@ -15,6 +15,11 @@ extern "C" {
  * Never NULL: read errors are reported in the "error" field. */
 char *rv_file_info_json(const char *path);
 
+/* What is read from videos is kept in the JSON file `path` across runs (NULL: this run only);
+ * rv_info_cache_flush writes it (it is also written as entries are added, at most every 10 s). */
+void rv_info_cache_set_file(const char *path);
+void rv_info_cache_flush(void);
+
 /* GPS/G-sensor track of a GPS log (any supported format) or a video's embedded track, as JSON with "format" and "error" (see rv-ffi/src/lib.rs). Never NULL. */
 char *rv_gps_track_json(const char *path);
 /* Lower-case extensions of the GPS log formats, as a JSON array of strings. */

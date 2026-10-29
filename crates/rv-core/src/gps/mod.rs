@@ -14,6 +14,7 @@ pub mod build;
 pub mod embedded;
 pub mod format;
 pub mod formats;
+pub mod mai70log;
 pub mod manager;
 
 pub mod util;

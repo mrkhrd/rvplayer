@@ -420,6 +420,30 @@ mod tests {
     }
 
     #[test]
+    fn mai70_blocks_give_one_point_per_fix_at_its_first_frame() {
+        use crate::gps::formats::mai70::tests::block;
+        let fix = |k: i32, speed: u32| Some((600_695_419 + k * 1000, 312_231_780 + k * 1000, 90, speed));
+        // One block a second: no fix, the same fix for 12 s while moving (repeated old fix),
+        // a new fix, then a fix held while standing.
+        let blocks: Vec<Vec<u8>> = std::iter::once(None)
+            .chain([fix(0, 100); 12])
+            .chain([fix(1, 100)])
+            .chain([fix(2, 0); 12])
+            .map(block)
+            .collect();
+        let file = interleaved_movie(&blocks, true);
+        let mut r = Cursor::new(&file);
+        let movie = mp4::read_movie(&mut r).unwrap();
+        let opts = LoadOptions { tz: 0.0, file_times: (45_000.0, 45_000.0 + 26.0 * SEC) };
+        let log = read_embedded(&mut r, &movie, "NO20261024-154056-012644F.MP4", &opts, false).unwrap();
+        assert_eq!(log.format, "mov70mai");
+        let t = log.track;
+        let got: Vec<(f64, u8, f64)> = t.gps.iter().map(|p| (p.time, p.warning, p.speed_kmh)).collect();
+        assert_eq!(got, [(1.0, 2, 100.0), (13.0, 0, 100.0), (14.0, 0, 0.0)]);
+        assert!((t.gps[1].lat - (60.0 + 6.96419 / 60.0)).abs() < 1e-9);
+    }
+
+    #[test]
     fn blocks_found_by_scanning_after_samples() {
         let blocks: Vec<Vec<u8>> = (0..3)
             .map(|k| atom(13, 6, 26 + k, b'A', 6003.8176, b'N', 3019.6213 + k as f32 * 0.05, b'E', 0.0, 90.0))

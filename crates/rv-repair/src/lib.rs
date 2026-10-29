@@ -176,6 +176,8 @@ impl Repair {
                         Ok(Err(e)) => Done::Failed(e),
                         Err(_) => Done::Failed(Error::Io("internal error".into())),
                     };
+                // The file was rewritten in place, its old times put back.
+                rv_core::infocache::forget(&broken);
                 *worker.done.lock().unwrap_or_else(|e| e.into_inner()) = Some(done);
             })?;
         Ok(Self {

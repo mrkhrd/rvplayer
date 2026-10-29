@@ -154,6 +154,9 @@ pub unsafe extern "C" fn rv_export_start(job_json: *const c_char) -> *mut RvExpo
         let thread = std::thread::Builder::new().name("rv-export".into()).spawn(move || {
             let done = catch_unwind(AssertUnwindSafe(|| run(&worker, &items, &opts, &output)))
                 .unwrap_or_else(|_| json!({ "finished": true, "ok": false, "error": "internal error" }));
+            // The output gets the recording's times: a file of the same name read before
+            // must not be taken for it.
+            rv_core::infocache::forget(std::path::Path::new(&output));
             if let Ok(mut s) = worker.status.lock()
                 && let (Value::Object(s), Value::Object(d)) = (&mut *s, done)
             {

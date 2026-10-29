@@ -14,7 +14,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use rv_core::{FileInfo, Track, rvmi};
+use rv_core::Track;
 
 use crate::gps::{
     DefaultGpsLoader, GpsLoader, TrackStats, crop, extension_rank, extract_gps_info, extract_gps_time, has_gps_extension,
@@ -572,32 +572,22 @@ struct VideoPreview {
 }
 
 fn preview_video(path: &str, gps: bool) -> VideoPreview {
-    let (info, movie) = FileInfo::load_with_movie(Path::new(path));
+    // Through the cache: a folder read before is not read again.
+    let info = rv_core::infocache::load(Path::new(path));
     let mut r = VideoPreview::default();
-    let Some(movie) = movie else { return r };
+    if info.error.is_some() {
+        return r;
+    }
     r.duration_s = info.duration;
     r.width = info.width;
     r.height = info.height;
-    if let Some(v) = movie.track_by_handler(b"vide") {
-        let samples = v.samples();
-        let secs = v.duration_secs();
-        if secs > 0.0 {
-            r.fps = samples.len() as f64 / secs;
-            r.kbps = samples.iter().map(|s| f64::from(s.size)).sum::<f64>() * 8.0 / secs / 1000.0;
-        }
-        let keys: Vec<usize> = samples.iter().enumerate().filter(|(_, s)| s.sync).map(|(i, _)| i).take(2).collect();
-        r.gop = match keys.as_slice() {
-            [a, b, ..] => (b - a) as u32,
-            [_] => samples.len() as u32,
-            [] => 0,
-        };
-        r.h264 = matches!(&v.codec, b"avc1" | b"avc3");
-    }
-    r.aac = movie
-        .tracks
-        .get(1)
-        .is_some_and(|t| &t.handler == b"soun" && t.codec.eq_ignore_ascii_case(b"mp4a"));
-    if gps && (movie.track_by_codec(&rvmi::CODEC).is_some() || !info.track.is_empty()) {
+    r.fps = info.fps;
+    r.kbps = info.kbps;
+    r.gop = info.gop;
+    r.h264 = info.h264;
+    r.aac = info.aac;
+    let rvmi = info.gps_format.as_deref() == Some("movRegV");
+    if gps && (rvmi || !info.track.is_empty()) {
         r.track = Some((info.track, info.gps_format.unwrap_or_default()));
     }
     r
@@ -675,6 +665,7 @@ impl Worker {
                         shared.bump();
                         self.cache.clear();
                         self.embedded.clear();
+                        rv_core::infocache::flush();
                         continue;
                     }
                     shared.idle.store(true, Ordering::SeqCst);

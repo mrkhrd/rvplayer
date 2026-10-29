@@ -1,7 +1,7 @@
 //! The format registry (`UnitGPSManager` initialization): one module per `UnitGps_*` unit.
-//! The order is the original's detection order. Additions: the Novatek block reader (tried
-//! before the original's DOD reader on the same records) and the CSV reader (the original only
-//! wrote CSV), which comes last.
+//! The order is the original's detection order. Additions: the 70mai and Novatek block readers
+//! (tried before the original's DOD reader on the same records) and the CSV reader (the
+//! original only wrote CSV), which comes last.
 
 use super::format::{Ctx, DataTest, Format, Spec};
 use super::util::CharSet;
@@ -25,6 +25,7 @@ pub mod logds10;
 pub mod logdvr;
 pub mod lukas;
 pub mod magiceye;
+pub mod mai70;
 pub mod map;
 pub mod mapstr;
 pub mod nmea;
@@ -46,6 +47,7 @@ pub fn all() -> Vec<Box<dyn Format>> {
         regv::create(),
         gpx::create(),
         kml::create(),
+        mai70::create(),
         novatek::create(),
         dod::create(),
         panorama::create(),

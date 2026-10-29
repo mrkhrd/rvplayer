@@ -23,6 +23,13 @@ pub struct FileInfo {
     pub start: Option<NaiveDateTime>,
     pub width: u32,
     pub height: u32,
+    /// Video frames per second, video bit rate (kbit/s) and key-frame interval (frames).
+    pub fps: f64,
+    pub kbps: f64,
+    pub gop: u32,
+    /// The video is H.264 and the second track AAC audio.
+    pub h264: bool,
+    pub aac: bool,
     pub camera: Option<String>,
     pub track: Track,
     /// Format of the embedded GPS data ("movRegV" for Registrator Viewer's own track,
@@ -73,7 +80,24 @@ impl FileInfo {
         if let Some(v) = movie.track_by_handler(b"vide") {
             self.width = v.width.round() as u32;
             self.height = v.height.round() as u32;
+            let samples = v.samples();
+            let secs = v.duration_secs();
+            if secs > 0.0 {
+                self.fps = samples.len() as f64 / secs;
+                self.kbps = samples.iter().map(|s| f64::from(s.size)).sum::<f64>() * 8.0 / secs / 1000.0;
+            }
+            let keys: Vec<usize> = samples.iter().enumerate().filter(|(_, s)| s.sync).map(|(i, _)| i).take(2).collect();
+            self.gop = match keys.as_slice() {
+                [a, b, ..] => (b - a) as u32,
+                [_] => samples.len() as u32,
+                [] => 0,
+            };
+            self.h264 = matches!(&v.codec, b"avc1" | b"avc3");
         }
+        self.aac = movie
+            .tracks
+            .get(1)
+            .is_some_and(|t| &t.handler == b"soun" && t.codec.eq_ignore_ascii_case(b"mp4a"));
         if let Some(track) = rvmi::read_track(&mut r, &movie)? {
             self.track = track;
             self.gps_format = Some("movRegV".to_string());
@@ -88,8 +112,29 @@ impl FileInfo {
                 Err(e) => self.gps_error = Some(e.to_string()),
             }
         }
+        self.add_mai70_log(path, &meta);
         self.start = self.track.start.or_else(|| creation_time(&movie));
         Ok(movie)
+    }
+
+    /// A 70mai clip: the accelerometer and altitude its card's trip log has for it (or the
+    /// whole track, when the video has no GPS); see [`gps::mai70log`].
+    fn add_mai70_log(&mut self, path: &Path, meta: &std::fs::Metadata) {
+        if !gps::mai70log::is_clip_name(&self.name) {
+            return;
+        }
+        let records = gps::mai70log::records_for_clip(path);
+        if records.is_empty() {
+            return;
+        }
+        if self.track.start.is_none() {
+            self.track.start = crate::rvmi::from_tdatetime(gps::file_times(meta).1 - self.duration * gps::util::SEC);
+        }
+        let had_gps = !self.track.gps.is_empty();
+        gps::mai70log::merge(&mut self.track, &records, self.duration);
+        if !had_gps && !self.track.gps.is_empty() {
+            self.gps_format = Some("log70mai".to_string());
+        }
     }
 
     pub fn distance_km(&self) -> f64 {

@@ -12,3 +12,4 @@ testutil = []
 
 [dependencies]
 chrono.workspace = true
+serde_json.workspace = true

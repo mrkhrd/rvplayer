@@ -81,11 +81,28 @@ pub struct RvPlayer(Player);
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rv_file_info_json(path: *const c_char) -> *mut c_char {
     let json = catch_unwind(|| match unsafe { path_arg(path) } {
-        Some(p) => file_info_json(&FileInfo::load(&p)),
+        Some(p) => file_info_json(&rv_core::infocache::load(&p)),
         None => json!({ "error": "invalid path" }),
     })
     .unwrap_or_else(|_| json!({ "error": "internal error" }));
     into_c_string(json.to_string())
+}
+
+/// Keeps what is read from videos in the JSON file `path` across runs (NULL: for this run
+/// only); see `rv_core::infocache`.
+///
+/// # Safety
+/// `path` must be a valid NUL-terminated UTF-8 string or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rv_info_cache_set_file(path: *const c_char) {
+    let file = unsafe { path_arg(path) };
+    let _ = catch_unwind(|| rv_core::infocache::set_file(file));
+}
+
+/// Writes the cache file of `rv_info_cache_set_file` if anything was added.
+#[unsafe(no_mangle)]
+pub extern "C" fn rv_info_cache_flush() {
+    let _ = catch_unwind(rv_core::infocache::flush);
 }
 
 /// Lower-case extensions of the GPS log formats, as a JSON array (`allExts`).
@@ -238,7 +255,7 @@ fn gsensor_rows(t: &Track) -> Value {
 /// The GPS / G-sensor track of a log file, or the embedded track of a video (via `FileInfo`).
 pub fn gps_track_json(path: &Path) -> Value {
     let (track, format, error) = if gps::is_video_path(path) {
-        let f = FileInfo::load(path);
+        let f = rv_core::infocache::load(path);
         let error = f.error.or(f.gps_error).or_else(|| f.track.is_empty().then(|| gps::GpsError::NoData.to_string()));
         (f.track, f.gps_format, error)
     } else {

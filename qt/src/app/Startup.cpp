@@ -1,10 +1,13 @@
 #include "Startup.h"
 
 #include "i18n/Lang.h"
+#include "rv_ffi.h"
 #include "vcl/Widgets.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QIcon>
+#include <QStandardPaths>
 
 namespace app {
 
@@ -13,7 +16,7 @@ void beforeApplication() {
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 }
 
-void afterApplication(QApplication &) {
+void afterApplication(QApplication &a) {
     QApplication::setApplicationName("RV Player");
     QApplication::setApplicationVersion("0.1.0");
     // Windows without an icon of their own (the main window) show the application's.
@@ -22,6 +25,11 @@ void afterApplication(QApplication &) {
     QApplication::setStyle("windowsvista");
     qRegisterMetaType<vcl::Event *>();
     Lang::instance().load();
+    // What was read from videos (durations, GPS) is kept across runs: a folder read before
+    // lists at once, a memory card included.
+    const QString cache = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)).filePath("file-info.json");
+    rv_info_cache_set_file(QDir::toNativeSeparators(cache).toUtf8().constData());
+    QObject::connect(&a, &QCoreApplication::aboutToQuit, [] { rv_info_cache_flush(); });
 }
 
 }  // namespace app

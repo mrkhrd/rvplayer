@@ -3,6 +3,7 @@
 
 pub mod fileinfo;
 pub mod gps;
+pub mod infocache;
 pub mod mp4;
 pub mod rvmi;
 #[cfg(any(test, feature = "testutil"))]

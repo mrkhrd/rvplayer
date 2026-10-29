@@ -125,6 +125,7 @@ private slots:
     void fullScreenToggles();
     void videoZoomInAndBack();
     void wheelOverGraphsZoomsTimeline();
+    void scanIsCached();
     void languageSwitchRetranslates();
     void propertyWindowShowsTheRow();
     void hoverOverGraphShowsDetails();
@@ -319,6 +320,22 @@ void MainFormTest::wheelOverGraphsZoomsTimeline() {
                       Qt::NoScrollPhase, false);
     QApplication::sendEvent(seekImage, &wheel);
     QVERIFY2(form->zoomR - form->zoomL < 0.99, "the timeline did not zoom in");
+}
+
+// Q-31: what the scan read is kept in the file-info cache, for the next run.
+void MainFormTest::scanIsCached() {
+    rv_info_cache_flush();
+    QFile f(QDir(testRoot()).filePath("file-info.json"));
+    QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(f.fileName()));
+    const QJsonObject cache = QJsonDocument::fromJson(f.readAll()).object();
+    QVERIFY(cache.value("version").toInt() >= 1);
+    QStringList cached;
+    for (const QJsonValue &e : cache.value("entries").toArray()) cached << QDir::toNativeSeparators(e.toObject().value("path").toString());
+    for (const FileRow &row : list()->listModel()->fileRows().rows) {
+        for (const QString &path : row.path.split(", ")) {
+            QVERIFY2(cached.contains(QDir::toNativeSeparators(path).toLower()), qPrintable(path));
+        }
+    }
 }
 
 // TR-010: choosing a language re-translates the menus at once.
@@ -989,6 +1006,10 @@ int main(int argc, char *argv[]) {
     int appArgc = data.isEmpty() ? 1 : 2;
     QApplication a(appArgc, appArgv);
     app::afterApplication(a);
+    // The tests' own (empty) file-info cache, not the user's.
+    const QString cache = QDir(testRoot()).filePath("file-info.json");
+    QFile::remove(cache);
+    rv_info_cache_set_file(QDir::toNativeSeparators(cache).toUtf8().constData());
     MainFormTest test(data);
     return QTest::qExec(&test, argc, argv);
 }

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use rv_core::{FileInfo, GpsPoint, Track};
+use rv_core::{GpsPoint, Track};
 
 use crate::model::{GpsInfo, TimeBlock, VideoFile, file_name};
 use crate::time::{NO_DATE, SEC, from_naive};
@@ -68,7 +68,7 @@ impl GpsLoader for DefaultGpsLoader {
     fn load_with_format(&self, path: &Path) -> Option<(Track, String)> {
         let ext = extension_lower(&path.to_string_lossy())?;
         if SCAN_VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-            let info = FileInfo::load(path);
+            let info = rv_core::infocache::load(path);
             return (info.error.is_none() && !info.track.is_empty())
                 .then(|| (info.track, info.gps_format.unwrap_or_default()));
         }
