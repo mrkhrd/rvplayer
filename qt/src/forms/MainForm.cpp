@@ -202,7 +202,6 @@ void MainForm::N_View_FileListClick(vcl::Event *e) {
     if (QWidget *pc = widget("PanelControl")) pc->setVisible(control);
     listSplitter->setVisible(list && map);
     browser->setVisible(map);
-    if (MapView *m = mapView()) m->navigate(mapProvider());
 
     // Q-13: the column is shown only when one of its parts is (the original also counted the
     // control panel while it sat next to the graphs).

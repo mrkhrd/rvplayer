@@ -4,15 +4,34 @@ project(rvplayer_qt LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+# RV_STATIC (single.cmd): a static Qt and everything else static too, the MSVC runtime included,
+# so that rvplayer.exe is the whole program.
+option(RV_STATIC "Link Qt, MapLibre, the Rust core and the MSVC runtime statically" OFF)
+if(RV_STATIC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+endif()
+# Unused code (most of the static map engine) is dropped; RelWithDebInfo links incrementally otherwise.
+if(MSVC)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO " /OPT:REF /OPT:ICF /INCREMENTAL:NO")
+endif()
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Network Test)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Widgets OpenGLWidgets Network Test)
 qt_standard_project_setup()
 
 # --- Rust core (crates/rv-ffi), always built optimised: the video decoders are too slow otherwise.
 set(RV_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
-set(RV_FFI_LIB ${RV_ROOT}/target/release/rv_ffi.lib)
+if(RV_STATIC)
+    set(RV_TARGET_DIR ${RV_ROOT}/target/static)
+    set(RV_CARGO ${CMAKE_COMMAND} -E env "RUSTFLAGS=-C target-feature=+crt-static" cargo)
+    set(RV_MAPLIBRE ${RV_ROOT}/deps/maplibre-static)
+else()
+    set(RV_TARGET_DIR ${RV_ROOT}/target)
+    set(RV_CARGO cargo)
+    set(RV_MAPLIBRE ${RV_ROOT}/deps/maplibre)
+endif()
+set(RV_FFI_LIB ${RV_TARGET_DIR}/release/rv_ffi.lib)
 add_custom_target(rv_ffi_build
-    COMMAND cargo build -p rv-ffi --release
+    COMMAND ${RV_CARGO} build -p rv-ffi --release --target-dir ${RV_TARGET_DIR}
     WORKING_DIRECTORY ${RV_ROOT}
     BYPRODUCTS ${RV_FFI_LIB}
     USES_TERMINAL)
@@ -21,6 +40,11 @@ set_target_properties(rv_ffi PROPERTIES
     IMPORTED_LOCATION ${RV_FFI_LIB}
     INTERFACE_INCLUDE_DIRECTORIES ${RV_ROOT}/crates/rv-ffi/include
     INTERFACE_LINK_LIBRARIES "kernel32;ntdll;userenv;ws2_32;dbghelp")
+
+# --- MapLibre Native (the map), built by maplibre.cmd into deps/maplibre (deps/maplibre-static)
+# as static libraries.
+list(APPEND CMAKE_PREFIX_PATH ${RV_MAPLIBRE})
+find_package(QMapLibre REQUIRED COMPONENTS Core Widgets)
 
 # --- Everything but main(), shared by the application and the UI tests.
 qt_add_library(rvplayer_lib STATIC
@@ -69,7 +93,8 @@ qt_add_library(rvplayer_lib STATIC
 )
 target_include_directories(rvplayer_lib PUBLIC src)
 add_dependencies(rvplayer_lib rv_ffi_build)
-target_link_libraries(rvplayer_lib PUBLIC Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Network rv_ffi)
+target_link_libraries(rvplayer_lib PUBLIC Qt6::Widgets Qt6::Network QMapLibre::Widgets rv_ffi)
+target_compile_definitions(rvplayer_lib PUBLIC QT_MAPLIBRE_STATIC)
 
 # --- Original Registrator Viewer assets (forms, bitmaps, translations, map pages).
 file(GLOB_RECURSE RV_ORIGINAL_ASSETS CONFIGURE_DEPENDS ${RV_ROOT}/assets/original/*)

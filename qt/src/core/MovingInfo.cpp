@@ -335,6 +335,24 @@ QVector<QVector<GpsSample>> MovingInfo::routeSegments() const {
     return out;
 }
 
+// UnitMovingInfo L1019–L1033: a gap is more than 11 s between points.
+TDateTime MovingInfo::nearestPlace(double lat, double lon, double &minD) const {
+    constexpr double kGap = 11 * kSecond, kInside = 0.5 * kSecond;
+    TDateTime r = -1;
+    for (const FileTrack &f : files) {
+        const QVector<GpsSample> &g = f.gps;
+        for (int i = 0; i < g.size(); ++i) {
+            const double d = (g[i].lon - lon) * (g[i].lon - lon) + (g[i].lat - lat) * (g[i].lat - lat);
+            if (d >= minD) continue;
+            minD = d;
+            r = g[i].t;
+            if (i == 0 || g[i].t - g[i - 1].t > kGap) r += kInside;
+            else if (i == g.size() - 1 || g[i + 1].t - g[i].t > kGap) r -= kInside;
+        }
+    }
+    return r;
+}
+
 // GM-104 (coordinate-only mode): speed from the distance over a window around each point that
 // spans a time step, bearing between points i-2 and i+4.
 void MovingInfo::deriveSpeedAndBearing(QVector<GpsSample> &gps) {

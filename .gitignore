@@ -1,3 +1,6 @@
 /target
 /testdata
 /qt/build
+/dist
+/deps
+/qt/build-static

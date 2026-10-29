@@ -1,7 +1,6 @@
 #include "Startup.h"
 
 #include "i18n/Lang.h"
-#include "map/MapView.h"
 #include "vcl/Widgets.h"
 
 #include <QApplication>
@@ -9,8 +8,8 @@
 namespace app {
 
 void beforeApplication() {
-    MapView::registerScheme();
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);  // required by Qt WebEngine
+    // The map is an OpenGL widget; shared contexts let it move between windows (full screen).
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 }
 
 void afterApplication(QApplication &) {

@@ -5,7 +5,7 @@ class QApplication;
 
 namespace app {
 
-// Before the QApplication exists: URL schemes and attributes Qt WebEngine needs.
+// Before the QApplication exists: application attributes (shared OpenGL contexts for the map).
 void beforeApplication();
 // After it exists: style, metatypes, translations.
 void afterApplication(QApplication &a);

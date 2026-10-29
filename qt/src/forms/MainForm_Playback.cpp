@@ -174,8 +174,7 @@ void MainForm::stopPlayback(bool clearSelection) {
     videoDx = videoDy = 0.5;
     if (isChecked("N_VideoZoom_Custom")) menuItemSet(action("N_VideoZoom_Letterbox"), true);
     layoutVideo();
-    lastRouteScript.clear();
-    if (MapView *m = mapView()) m->exec("ClearPath(); ClearMarkers(); ClearMarkersAB();");
+    if (MapView *m = mapView()) m->clearAll();
     setupZoomBar();
     clearGauges();
     hideDetails();

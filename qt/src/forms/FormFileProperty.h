@@ -22,6 +22,9 @@ public:
     Q_INVOKABLE void FormClose(vcl::Event *e);
     Q_INVOKABLE void ButtonCopyClick(vcl::Event *e);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *ev) override;
+
 private:
     void add(const QString &name, const QString &value, bool translate = true);
     void addFile(const GroupFile &f, const QString &prefix);
