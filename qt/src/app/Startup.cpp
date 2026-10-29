@@ -4,6 +4,7 @@
 #include "vcl/Widgets.h"
 
 #include <QApplication>
+#include <QIcon>
 
 namespace app {
 
@@ -15,6 +16,8 @@ void beforeApplication() {
 void afterApplication(QApplication &) {
     QApplication::setApplicationName("RV Player");
     QApplication::setApplicationVersion("0.1.0");
+    // Windows without an icon of their own (the main window) show the application's.
+    QApplication::setWindowIcon(QIcon(":/app/rvplayer.ico"));
     // The native Windows look of the original's themed VCL controls (not Qt's Windows 11 style).
     QApplication::setStyle("windowsvista");
     qRegisterMetaType<vcl::Event *>();

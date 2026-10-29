@@ -35,9 +35,15 @@ public:
         QString url;          // raster: several layers separated by '|', {s} for subdomains
         QString attribution;  // raster layers; vector styles carry their own
         int maxZoom = 19;     // raster tiles exist up to this zoom
+        QString keyService;   // the provider whose API key its requests carry ("carto"), if any
     };
     // Q-27: the base layers; the first is the default.
     static const QVector<Layer> &layers();
+    // API keys of the providers that need one (Q-28), added to every request to their servers.
+    static void setApiKey(const QString &service, const QString &key);
+    static QString apiKey(const QString &service);
+    // A request URL as sent: with the key of the provider whose server it goes to, if set.
+    static QString withApiKey(const QString &url);
 
     // A line of the route or of the route preview (AddPath).
     struct Path {
@@ -91,6 +97,11 @@ public:
     QMapLibre::Map *engine() const;
     // The distance tool's total (metres) and text, for tests.
     double rulerMetres() const;
+    // A line of the route within 6 pixels of a widget point (where the cursor becomes a hand).
+    bool routeAt(QPointF pixel) const;
+    // From the layer menu: a layer that needs a key asks for it first; false if none was given.
+    bool chooseLayer(const QString &name);
+    bool askApiKey(const QString &service);
 
 signals:
     void loaded();                    // the engine exists; start() is expected
@@ -98,6 +109,7 @@ signals:
     void viewChanged(bool finished);  // while moving, and once it stops
     void layerChanged(const QString &name);
     void clicked(GeoPoint at, QPointF pixel);  // a left click without a drag (routeClick)
+    void apiKeyChanged(const QString &service, const QString &key);
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
@@ -127,6 +139,7 @@ private:
     bool ready_ = false;
     QHash<QString, QByteArray> data;  // GeoJSON of each overlay source, kept across style changes
     QByteArrayList endpoints, abMarks;  // S and F, A and B
+    QVector<Path> paths_;  // for the cursor over the route
     QVector<GeoPoint> ruler;
     bool rulerOn = false;
 };

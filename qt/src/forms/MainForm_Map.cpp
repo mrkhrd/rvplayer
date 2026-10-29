@@ -24,6 +24,9 @@ QWidget *MainForm::createControl(const vcl::DfmObject &def, QWidget *parent) {
         connect(map, &MapView::viewChanged, this, &MainForm::mapViewChanged);
         connect(map, &MapView::layerChanged, this, [](const QString &name) { Settings::instance().writeString("gm_L", name); });
         connect(map, &MapView::clicked, this, [this](GeoPoint at) { mapClicked(at.lat, at.lon); });
+        connect(map, &MapView::apiKeyChanged, this, [](const QString &service, const QString &key) {
+            Settings::instance().writeString("mapKey_" + service, key);
+        });
         return map;
     }
     return nullptr;
@@ -65,6 +68,7 @@ void MainForm::mapLoaded() {
     const double y = s.readString("gm_Y", lang.trDef("gmStartY", "40.713003")).toDouble();
     const double x = s.readString("gm_X", lang.trDef("gmStartX", "-74.005767")).toDouble();
     const int z = s.readInt("gm_Z", lang.trDef("gmStartZoom", "14").toInt());
+    MapView::setApiKey("carto", s.readString("mapKey_carto"));  // Q-28
     map->start({y, x}, z, s.readString("gm_L"));
 }
 

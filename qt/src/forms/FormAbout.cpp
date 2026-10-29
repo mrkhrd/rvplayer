@@ -2,82 +2,84 @@
 
 #include "i18n/Lang.h"
 #include "vcl/AlignLayout.h"
+#include "vcl/Widgets.h"
 
 #include <QApplication>
 #include <QDesktopServices>
 #include <QLabel>
 #include <QUrl>
 
+namespace {
+
+const char *const kProjectUrl = "https://github.com/mrkhrd/rvplayer";
+
+}  // namespace
+
 FormAbout::FormAbout(QWidget *parent) : vcl::Form(parent) {
     setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint | Qt::MSWindowsFixedSizeDialogHint);
 }
 
-// SF-ABOUT-001…003, SF-ABOUT-008.
+// SF-ABOUT-001…003, SF-ABOUT-008; Q-29: this program above, the original and its author below.
 void FormAbout::FormCreate(vcl::Event *) {
     const Lang &lang = Lang::instance();
+    const bool ru = lang.current() == "ru";
     setWindowIcon(QIcon(":/original/images/ICON_ABOUT.ICO"));
     setWindowTitle(lang.tr("N_Help_About"));
     QPalette pal = palette();
     pal.setColor(QPalette::Window, lang.color("colorAboutBG"));
     setPalette(pal);
     setAutoFillBackground(true);
+    // The application's icon where the DATAKAM logo was.
+    if (auto *logo = find<vcl::Image>("ImageLogo")) {
+        logo->setStretch(true);
+        logo->setPixmap(QIcon(":/app/rvplayer.ico").pixmap(QSize(80, 80), devicePixelRatioF()));
+    }
     if (auto *title = find<QLabel>("LabelTitle")) {
         QFont f = title->font();
         f.setFamily("Arial");
         title->setFont(f);
     }
-    if (QWidget *logo = find<QWidget>("ImageLogo")) logo->hide();  // the DATAKAM logo
     auto set = [&](const char *name, const QString &text) {
         if (auto *l = find<QLabel>(name)) {
             l->setText(text);
             l->setVisible(!text.isEmpty());
         }
     };
-    set("LabelName", lang.trDef("MyName", QString()));
-    set("LabelCity", lang.trDef("MyCity", QString()));
-    set("LabelMail", lang.trDef("MyEMail", QString()));
-    set("LabelSite", lang.trDef("MySite", QString()));
-    if (QWidget *mail = find<QWidget>("LabelMail")) mail->setToolTip(lang.tr("SendMail"));
-    if (QWidget *site = find<QWidget>("LabelSite")) site->setToolTip(lang.tr("N_Help_Site"));
-    // SF-ABOUT-002: city above the mail, the name below it.
-    vcl::AlignLayout *l = layoutOf(this);
-    QWidget *name = find<QWidget>("LabelName");
-    QWidget *city = find<QWidget>("LabelCity");
-    if (l && name && city) {
-        QRect rn = l->controlRect(name), rc = l->controlRect(city);
-        const int top = rn.top();
-        rn.moveTop(rc.top());
-        rc.moveTop(top);
-        l->setControlRect(name, rn);
-        l->setControlRect(city, rc);
+    set("LabelSite", QString::fromLatin1(kProjectUrl).mid(8));  // without "https://"
+    if (QWidget *site = find<QWidget>("LabelSite")) site->setToolTip(QString::fromLatin1(kProjectUrl));
+    // The original program and its author (the translation files' own entries).
+    if (vcl::AlignLayout *l = layoutOf(this)) {
+        auto *original = new QLabel(ru ? QStringLiteral("На основе Registrator Viewer") : QStringLiteral("Based on Registrator Viewer"), this);
+        original->setObjectName("LabelOriginal");
+        l->addControl(original, vcl::Align::None, {}, QRect(0, 0, 10, 13));
     }
+    set("LabelName", (ru ? QStringLiteral("автор: ") : QStringLiteral("by ")) + lang.trDef("MyName", QString()));
+    set("LabelCity", lang.trDef("MyCity", QString()));
+    set("LabelMail", QString());  // the original's contact no longer exists
+    if (QWidget *mail = find<QWidget>("LabelMail")) mail->setToolTip(lang.tr("SendMail"));
 }
 
-// SF-ABOUT-004: everything centred horizontally.
+// SF-ABOUT-004: everything centred, one row under the other.
 void FormAbout::FormShow(vcl::Event *) {
-    if (auto *t = find<QLabel>("LabelTitle")) t->setText(QStringLiteral("Registrator Viewer"));
+    if (auto *t = find<QLabel>("LabelTitle")) t->setText(QStringLiteral("RV Player"));
     if (auto *v = find<QLabel>("LabelVer")) v->setText("v" + QApplication::applicationVersion());
     vcl::AlignLayout *l = layoutOf(this);
     if (!l) return;
     const int width = 300;
-    // Without the logo the text starts at the top instead of under it.
-    const int lift = find<QWidget>("LabelTitle") ? l->controlRect(find<QWidget>("LabelTitle")).top() : 0;
-    for (const char *n : {"LabelTitle", "LabelVer", "LabelName", "LabelMail", "LabelCity", "LabelSite"}) {
-        if (auto *w = find<QLabel>(n)) {
-            QRect r = l->controlRect(w);
-            r.setWidth(w->sizeHint().width());
-            r.moveLeft((width - r.width()) / 2);
-            if (!aboutLifted) r.translate(0, -lift);
-            l->setControlRect(w, r);
-        }
+    // Rows with the space above each.
+    const std::pair<const char *, int> rows[] = {{"ImageLogo", 4},     {"LabelTitle", 6}, {"LabelVer", 0}, {"LabelSite", 6},
+                                                 {"LabelOriginal", 20}, {"LabelName", 3},  {"LabelCity", 3}};
+    int y = 0;
+    for (const auto &[name, gap] : rows) {
+        QWidget *w = findChild<QWidget *>(name);  // LabelOriginal is not one of the form's own
+        if (!w || w->isHidden()) continue;
+        const QSize size = qobject_cast<vcl::Image *>(w) ? QSize(80, 80) : w->sizeHint();
+        y += gap;
+        l->setControlRect(w, QRect((width - size.width()) / 2, y, size.width(), size.height()));
+        y += size.height();
     }
-    aboutLifted = true;
-    // AutoSize with BorderWidth 10: the window ends 10 px around the labels.
-    int bottom = 0;
-    for (const char *n : {"LabelTitle", "LabelVer", "LabelName", "LabelMail", "LabelCity", "LabelSite"}) {
-        if (auto *w = find<QLabel>(n); w && !w->isHidden()) bottom = std::max(bottom, l->controlRect(w).bottom() + 1);
-    }
-    setFixedSize(width + 20, bottom + 20);
+    // AutoSize with BorderWidth 10: the window ends 10 px around the rows.
+    setFixedSize(width + 20, y + 4 + 20);
 }
 
 // SF-ABOUT-006/007.
@@ -86,7 +88,7 @@ void FormAbout::LabelMailClick(vcl::Event *) {
 }
 
 void FormAbout::LabelSiteClick(vcl::Event *) {
-    if (auto *s = find<QLabel>("LabelSite"); s && !s->text().isEmpty()) QDesktopServices::openUrl(QUrl(s->text()));
+    QDesktopServices::openUrl(QUrl(QString::fromLatin1(kProjectUrl)));
 }
 
 // SF-ABOUT-005: blue while hovered.
