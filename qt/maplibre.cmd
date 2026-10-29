@@ -24,8 +24,10 @@ for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\
 if "%VSDIR%"=="" (echo Visual Studio C++ tools not found & exit /b 1)
 call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
+rem core.longpaths: a test-data submodule has paths beyond Windows' 260 characters ("Filename too
+rem long" on GitHub's machines); the setting goes to the submodules' clones too.
 if not exist "%SRC%\CMakeLists.txt" (
-    git clone --depth 1 --branch %TAG% --recurse-submodules --shallow-submodules ^
+    git -c core.longpaths=true clone --depth 1 --branch %TAG% --recurse-submodules --shallow-submodules ^
         https://github.com/maplibre/maplibre-native-qt.git "%SRC%" || exit /b 1
 )
 rem No Qt Location plugin; SQLite (the tile cache) built in instead of Qt Sql. C4834: newer Qt
