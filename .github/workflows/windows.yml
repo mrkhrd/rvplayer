@@ -1,0 +1,92 @@
+# Builds the single-file Windows program (qt/single.cmd) on every push to master, runs the Rust
+# tests and publishes the program as a release. The static Qt and MapLibre take an hour or two
+# to build the first time; they are cached after that.
+name: Windows build
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ["docs/**", "**/*.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # the release
+
+concurrency:
+  group: windows-build
+  cancel-in-progress: false
+
+env:
+  # The Rust core uses the static MSVC runtime, as qt/CMakeLists.txt does with RV_STATIC.
+  RUSTFLAGS: -C target-feature=+crt-static
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static Qt and MapLibre from the cache
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            deps/qt-static
+            deps/maplibre-static
+          key: static-deps-${{ hashFiles('qt/single.cmd', 'qt/maplibre.cmd') }}
+
+      - name: Build the static Qt and MapLibre
+        if: steps.deps.outputs.cache-hit != 'true'
+        shell: cmd
+        run: qt\single.cmd deps
+
+      # Saved at once, so that a later failure does not cost this build again.
+      - name: Keep them in the cache
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            deps/qt-static
+            deps/maplibre-static
+          key: ${{ steps.deps.outputs.cache-primary-key }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target/static"
+
+      - name: Rust tests
+        run: cargo test --release --workspace --exclude rv-app --target-dir target/static
+
+      - name: Build the program
+        shell: cmd
+        run: qt\single.cmd
+
+      - name: Name the release
+        id: release
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path qt/CMakeLists.txt -Pattern 'set\(RV_VERSION ([0-9.]+)\)').Matches[0].Groups[1].Value
+          $build = "$version.${{ github.run_number }}"
+          Copy-Item dist/RVPlayer.exe "dist/RVPlayer-$build-win64.exe"
+          $notes = (Get-Content assets/app/whatsnew_en.txt -Raw).TrimEnd()
+          @(
+            "One program file for 64-bit Windows 10 and 11: download and run, nothing to install.",
+            "",
+            '```text', $notes, '```',
+            "",
+            "Built from $env:GITHUB_SHA."
+          ) | Set-Content -Encoding utf8 dist/notes.md
+          "build=$build" >> $env:GITHUB_OUTPUT
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.release.outputs.build }}
+          target_commitish: ${{ github.sha }}
+          name: RV Player ${{ steps.release.outputs.build }}
+          body_path: dist/notes.md
+          files: dist/RVPlayer-${{ steps.release.outputs.build }}-win64.exe
+          fail_on_unmatched_files: true

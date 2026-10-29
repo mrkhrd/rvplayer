@@ -74,13 +74,11 @@ void MainForm::N_Help_WhatsNewClick(vcl::Event *) {
     }
 }
 
-// The brand site is gone (no brand), and the author's site has no address in the translations.
+// Both hidden: the brand's site (no brand) and the original's site, which is gone (Q-29: the
+// project page is on the About window).
 void MainForm::N_Help_Site_BrandClick(vcl::Event *) {}
 
-void MainForm::N_Help_Site_MyClick(vcl::Event *) {
-    const QString site = Lang::instance().trDef("MySite", QString());
-    if (!site.isEmpty()) QProcess::startDetached("explorer.exe", {site});
-}
+void MainForm::N_Help_Site_MyClick(vcl::Event *) {}
 
 // SH-024: confirm, wipe the settings, start again.
 void MainForm::N_Settings_ClearClick(vcl::Event *) {

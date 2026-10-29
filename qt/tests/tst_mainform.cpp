@@ -403,6 +403,8 @@ void MainFormTest::aboutShowsCredits() {
     QCOMPARE(a->find<QLabel>("LabelTitle")->text(), QStringLiteral("RV Player"));
     QVERIFY(a->find<QWidget>("ImageLogo")->isVisible());
     QCOMPARE(a->find<QLabel>("LabelSite")->text(), QStringLiteral("github.com/mrkhrd/rvplayer"));
+    QVERIFY(a->find<QLabel>("LabelSite")->font().underline());  // a link, instead of Help > Visit Site
+    QVERIFY(!form->action("N_Help_Site_My")->isVisible());
     auto *original = a->findChild<QLabel *>("LabelOriginal");
     QVERIFY(original && original->isVisible() && original->text().contains("Registrator Viewer"));
     const QString author = a->find<QLabel>("LabelName")->text();

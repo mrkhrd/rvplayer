@@ -76,8 +76,9 @@ void MainForm::FormCreate(vcl::Event *) {
 
     setupMapMenu();
     playback->setTrimTail(s.readString("trimTailMS", "0").toDouble() / 1000.0);
-    if (QAction *brand = action("N_Help_Site_Brand")) brand->setVisible(false);
-    if (QAction *site = action("N_Help_Site_My")) site->setVisible(!Lang::instance().trDef("MySite", QString()).isEmpty());
+    for (const char *name : {"N_Help_Site_Brand", "N_Help_Site_My"}) {
+        if (QAction *site = action(name)) site->setVisible(false);
+    }
     if (auto *volume = find<QSlider>("TrackBarVolume")) volume->setValue(s.readInt("volume", 100));  // L984
     N_View_TimeZone_LocalClick(nullptr);
     N_View_Refresh_SlowClick(nullptr);
