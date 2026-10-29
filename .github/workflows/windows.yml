@@ -42,8 +42,10 @@ jobs:
           path: deps/qt-static
           key: ${{ env.QT_CACHE }}
 
+      # Each long step has a limit of its own: a hang fails it within hours, not at the job's end.
       - name: Build the static Qt
         if: steps.qt.outputs.cache-hit != 'true'
+        timeout-minutes: 150
         shell: cmd
         run: qt\single.cmd qt
 
@@ -63,6 +65,7 @@ jobs:
 
       - name: Build the static MapLibre
         if: steps.maplibre.outputs.cache-hit != 'true'
+        timeout-minutes: 120
         shell: cmd
         run: qt\single.cmd deps
 
@@ -79,9 +82,11 @@ jobs:
           workspaces: ". -> target/static"
 
       - name: Rust tests
+        timeout-minutes: 60
         run: cargo test --release --workspace --exclude rv-app --target-dir target/static
 
       - name: Build the program
+        timeout-minutes: 60
         shell: cmd
         run: qt\single.cmd
 
