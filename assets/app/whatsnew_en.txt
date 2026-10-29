@@ -1,0 +1,27 @@
+=============================
+RV Player v0.1.0 | 2026.10.29
+=============================
+A new program based on Registrator Viewer by Vadim Andreevich Kozlov:
+the same windows and controls, rebuilt for today's Windows.
+
+ + Plays H.264 and H.265 (HEVC) recordings with its own decoder, no codecs to install.
+ + GPS tracks in 31 formats, from logs and from inside the videos (VIOFO and others).
+ + Native map:
+   + vector maps (OpenFreeMap), sharp at any zoom and on high-resolution screens;
+   + OpenStreetMap, satellite and hybrid (Esri), topographic and cycling maps;
+   + CARTO maps with your own free API key.
+ + Click the route on the map to jump the video there; the cursor turns into a hand over it.
+ + Map ruler, scale, KML and GPX overlays, follow the car and zoom around it.
+ + Save fragments without re-encoding: cut, join and speed up, keeping the GPS track
+   and the recording time; SRT subtitles from your own template.
+ + Repair recordings cut off by a power loss, from a good file of the same camera.
+ + GPS log converter: KML, PLT, GPX, DatDOD, CSV and SRT; export the track,
+   open it in Google Earth, attach a track to videos, move videos in time.
+ + File properties, copy with the dates kept, snapshots with the GPS position in EXIF,
+   copy the coordinates with your own template.
+ + Faster and smoother: seeking does not stall, the accelerometer graph is smooth.
+ + KML times are real UTC; exported texts follow the Windows regional settings.
+ + Portable: one file of about 10 MB, or a folder; nothing to install.
+ + New icon; English and Russian.
+ - Google, Yandex, Navitel and Baidu maps (closed to other programs or need keys).
+ - Codec (DirectShow) menus, camera setup and online updates (their servers are gone).

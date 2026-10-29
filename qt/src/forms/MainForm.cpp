@@ -167,7 +167,7 @@ void MainForm::doTranslate() {
         if (QAction *a = action("N_View_Language")) a->setText(a->text() + "   ( Language )");
     }
     // TR-029 (without the DATAKAM brand, see decisions.md).
-    setWindowTitle(QStringLiteral("Registrator Viewer"));
+    setWindowTitle(QStringLiteral("RV Player"));
 }
 
 // --- Layout -----------------------------------------------------------------------------------
