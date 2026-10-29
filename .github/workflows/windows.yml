@@ -1,6 +1,7 @@
 # Builds the single-file Windows program (qt/single.cmd) on every push to master, runs the Rust
 # tests and publishes the program as a release. The static Qt and MapLibre take an hour or two
-# to build the first time; they are cached after that.
+# to build the first time; each is cached as soon as it is built, so a later failure or timeout
+# does not cost it again.
 name: Windows build
 
 on:
@@ -17,6 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Cache keys of the static dependencies: the versions pinned in qt/single.cmd and
+  # qt/maplibre.cmd, and a revision to bump when their build options change (MapLibre's
+  # follows Qt's, as it is built against it).
+  QT_CACHE: static-qt-6.10.3-r1
+  MAPLIBRE_CACHE: static-maplibre-3.0.0-qt-6.10.3-r1
   # The Rust core uses the static MSVC runtime, as qt/CMakeLists.txt does with RV_STATIC.
   RUSTFLAGS: -C target-feature=+crt-static
   CARGO_TERM_COLOR: always
@@ -24,36 +30,51 @@ env:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 300
+    timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      # Third-party code runs with write access to the repository: actions are pinned to commits.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - name: Static Qt and MapLibre from the cache
-        id: deps
-        uses: actions/cache/restore@v4
+      - name: Static Qt from the cache
+        id: qt
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
-          path: |
-            deps/qt-static
-            deps/maplibre-static
-          key: static-deps-${{ hashFiles('qt/single.cmd', 'qt/maplibre.cmd') }}
+          path: deps/qt-static
+          key: ${{ env.QT_CACHE }}
 
-      - name: Build the static Qt and MapLibre
-        if: steps.deps.outputs.cache-hit != 'true'
+      - name: Build the static Qt
+        if: steps.qt.outputs.cache-hit != 'true'
+        shell: cmd
+        run: qt\single.cmd qt
+
+      - name: Keep the static Qt
+        if: steps.qt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: deps/qt-static
+          key: ${{ env.QT_CACHE }}
+
+      - name: Static MapLibre from the cache
+        id: maplibre
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: deps/maplibre-static
+          key: ${{ env.MAPLIBRE_CACHE }}
+
+      - name: Build the static MapLibre
+        if: steps.maplibre.outputs.cache-hit != 'true'
         shell: cmd
         run: qt\single.cmd deps
 
-      # Saved at once, so that a later failure does not cost this build again.
-      - name: Keep them in the cache
-        if: steps.deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+      - name: Keep the static MapLibre
+        if: steps.maplibre.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
-          path: |
-            deps/qt-static
-            deps/maplibre-static
-          key: ${{ steps.deps.outputs.cache-primary-key }}
+          path: deps/maplibre-static
+          key: ${{ env.MAPLIBRE_CACHE }}
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
         with:
           workspaces: ". -> target/static"
 
@@ -82,7 +103,7 @@ jobs:
           "build=$build" >> $env:GITHUB_OUTPUT
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           tag_name: v${{ steps.release.outputs.build }}
           target_commitish: ${{ github.sha }}
